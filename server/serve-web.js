@@ -1,6 +1,6 @@
 /**
  * Production web server for ENCALM Asset Tracker on Render / Docker.
- * Includes dedicated health endpoints and robust SPA fallback.
+ * Includes dedicated health endpoints, brand favicon handlers, and robust SPA fallback.
  */
 
 const http = require("http");
@@ -73,25 +73,39 @@ const server = http.createServer((req, res) => {
       return;
     }
 
-    // 2. Serve static asset if requested file exists
+    // 2. Direct Encalm favicon handlers
+    if (cleanUrl === "/favicon.ico") {
+      const favIco = path.join(STATIC_ROOT, "favicon.ico");
+      if (sendFile(favIco, res)) return;
+      const rootIco = path.resolve(__dirname, "..", "favicon.ico");
+      if (sendFile(rootIco, res)) return;
+    }
+    if (cleanUrl === "/favicon.png") {
+      const favPng = path.join(STATIC_ROOT, "favicon.png");
+      if (sendFile(favPng, res)) return;
+      const brandPng = path.resolve(__dirname, "..", "assets", "brand", "encalm-favicon.png");
+      if (sendFile(brandPng, res)) return;
+    }
+
+    // 3. Serve static asset if requested file exists
     const requestedFile = safeFilePath(req.url || "/");
     if (requestedFile && sendFile(requestedFile, res)) {
       return;
     }
 
-    // 3. SPA Fallback: root index.html
+    // 4. SPA Fallback: root index.html
     const indexFile = path.join(STATIC_ROOT, "index.html");
     if (sendFile(indexFile, res)) {
       return;
     }
 
-    // 4. Fallback: login.html
+    // 5. Fallback: login.html
     const loginFile = path.join(STATIC_ROOT, "login.html");
     if (sendFile(loginFile, res)) {
       return;
     }
 
-    // 5. Fallback: any available html file in static root
+    // 6. Fallback: any available html file in static root
     if (fs.existsSync(STATIC_ROOT)) {
       const files = fs.readdirSync(STATIC_ROOT).filter((f) => f.endsWith(".html"));
       if (files.length > 0 && sendFile(path.join(STATIC_ROOT, files[0]), res)) {
@@ -99,10 +113,10 @@ const server = http.createServer((req, res) => {
       }
     }
 
-    // 6. Safe 200 OK fallback HTML so health check never times out
+    // 7. Safe 200 OK fallback HTML so health check never times out
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     res.end(
-      "<!DOCTYPE html><html><head><title>Asset Tracker</title></head><body><h1>ENCALM Asset Tracker</h1><p>Starting up...</p></body></html>"
+      "<!DOCTYPE html><html><head><title>ENCALM Asset Tracker</title><link rel='icon' href='/favicon.ico'></head><body><h1>ENCALM Asset Tracker</h1><p>Starting up...</p></body></html>"
     );
   } catch (error) {
     console.error("Request handling error:", error);
