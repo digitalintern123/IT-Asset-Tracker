@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, {
   createContext,
   useCallback,
@@ -8,14 +7,36 @@ import React, {
   useRef,
   useState,
 } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
 
 import { useAuth } from "@/contexts/AuthContext";
-import { isMsConfigured } from "@/lib/msConfig";
-import { apiFetchAll, apiCreateAsset, apiUpdateAsset, apiDeleteAsset } from "@/lib/api";
-import { createSharePointService, type SharePointService } from "@/lib/sharepoint";
-import type { Asset, AssetInput } from "@/types/asset";
+import {
+  apiCreateAsset,
+  apiDeleteAsset,
+  apiFetchAll,
+  apiUpdateAsset,
+} from "@/lib/api";
+import { generateStableAssetId, matchesAsset } from "@/lib/assetId";
+import { resolveAssetConflict } from "@/lib/conflictResolver";
+import { MS_CONFIG, isMsConfigured } from "@/lib/msConfig";
+import {
+  drainOfflineQueue,
+  enqueueOfflineMutation,
+  isNetworkOnline,
+} from "@/lib/offlineQueue";
+import {
+  SharePointService,
+  createSharePointService,
+} from "@/lib/sharepoint";
+import { validateStatusTransition } from "@/lib/statusModel";
+import type {
+  Asset,
+  AssetInput,
+  AssignmentRecord,
+} from "@/types/asset";
 
-const CACHE_KEY = "@asset-tracker/cache/v3";
+const CACHE_KEY = "@encalm/asset_cache_v3";
 
 interface CachePayload {
   lastFetched: number;
@@ -24,105 +45,75 @@ interface CachePayload {
 
 export const DEMO_SAMPLE_ASSETS: Asset[] = [
   {
-    id: "demo-1",
+    id: "ENC-LAP-2026-0001",
     spItemId: "1",
-    name: "Encalm Prive Check-in Terminal",
-    category: "Desktop",
-    serialNumber: "ENC-DEL-T3-001",
-    status: "in_use",
-    assignee: "Rajesh Kumar (Duty Mgr)",
-    location: "DEL T3 — Prive Lounge Reception",
-    purchaseDate: "2024-01-15",
-    purchasePrice: 1450,
-    warrantyExpiry: "2027-01-15",
-    notes: "Primary guest check-in terminal with passport/boarding pass reader.",
-    createdAt: new Date("2024-01-15").toISOString(),
-    updatedAt: new Date("2024-01-15").toISOString(),
-    _syncStatus: "synced",
-  },
-  {
-    id: "demo-2",
-    spItemId: "2",
-    name: "Encalm Spa Reception iPad Pro",
-    category: "Tablet",
-    serialNumber: "ENC-SPA-IPAD-04",
-    status: "in_use",
-    assignee: "Priya Sharma (Spa Lead)",
-    location: "DEL T3 — Wellness Spa",
-    purchaseDate: "2024-03-10",
-    purchasePrice: 1199,
-    warrantyExpiry: "2026-03-10",
-    notes: "Spa booking and treatment scheduling tablet.",
-    createdAt: new Date("2024-03-10").toISOString(),
-    updatedAt: new Date("2024-03-10").toISOString(),
-    _syncStatus: "synced",
-  },
-  {
-    id: "demo-3",
-    spItemId: "3",
-    name: 'Flight Info Display 55" 4K',
-    category: "Monitor",
-    serialNumber: "FIDS-HYD-55-09",
-    status: "in_use",
-    assignee: "IT Lounge Operations",
-    location: "HYD — International Lounge Area A",
-    purchaseDate: "2023-11-20",
-    purchasePrice: 1850,
-    warrantyExpiry: "2026-11-20",
-    notes: "Live departure flight information display.",
-    createdAt: new Date("2023-11-20").toISOString(),
-    updatedAt: new Date("2023-11-20").toISOString(),
-    _syncStatus: "synced",
-  },
-  {
-    id: "demo-4",
-    spItemId: "4",
-    name: "IT Operations ThinkPad T14",
+    name: "MacBook Pro 16\" M3",
     category: "Laptop",
-    serialNumber: "PF-4K992-DEL",
+    serialNumber: "C02G1234MD6R",
     status: "in_use",
-    assignee: "Amit Patel (Network Admin)",
-    location: "DEL T3 — IT Server Room",
-    purchaseDate: "2024-02-05",
-    purchasePrice: 1650,
-    warrantyExpiry: "2027-02-05",
-    notes: "Lounge network monitoring and Wi-Fi controller administration.",
-    createdAt: new Date("2024-02-05").toISOString(),
-    updatedAt: new Date("2024-02-05").toISOString(),
+    assignee: "Rahul Sharma",
+    location: "T3 Terminal Lounge - Reception",
+    purchaseDate: "2024-03-15",
+    purchasePrice: 249900,
+    warrantyExpiry: "2027-03-15",
+    notes: "Assigned to Lounge Duty Manager. Dual external displays.",
+    assignmentHistory: [
+      {
+        id: "hist_1",
+        assignee: "Rahul Sharma",
+        assignedBy: "IT Administrator",
+        assignedAt: "2024-03-16T10:00:00Z",
+        location: "T3 Terminal Lounge - Reception",
+        notes: "Initial hardware issuance",
+      },
+    ],
+    createdAt: "2024-03-15T00:00:00.000Z",
+    updatedAt: "2024-03-16T00:00:00.000Z",
     _syncStatus: "synced",
   },
   {
-    id: "demo-5",
-    spItemId: "5",
-    name: "Bar Inventory Barcode Scanner",
-    category: "Equipment",
-    serialNumber: "ZEB-DS2208-GOA",
+    id: "ENC-MON-2026-0002",
+    spItemId: "2",
+    name: "Dell UltraSharp 27\" 4K",
+    category: "Monitor",
+    serialNumber: "CN0987654321",
     status: "available",
     assignee: "",
-    location: "GOA — Lounge IT Store",
-    purchaseDate: "2024-04-12",
-    purchasePrice: 320,
-    warrantyExpiry: "2026-04-12",
-    notes: "Zebra handheld barcode scanner for beverage stocktaking.",
-    createdAt: new Date("2024-04-12").toISOString(),
-    updatedAt: new Date("2024-04-12").toISOString(),
+    location: "IT Storage - Terminal 3 Basement",
+    purchaseDate: "2024-01-10",
+    purchasePrice: 48500,
+    warrantyExpiry: "2027-01-10",
+    notes: "Spares inventory for VIP lounge check-in desks.",
+    assignmentHistory: [],
+    createdAt: "2024-01-10T00:00:00.000Z",
+    updatedAt: "2024-01-10T00:00:00.000Z",
     _syncStatus: "synced",
   },
   {
-    id: "demo-6",
-    spItemId: "6",
-    name: "Concierge iPhone 15",
+    id: "ENC-PHN-2026-0003",
+    spItemId: "3",
+    name: "iPhone 15 Pro",
     category: "Phone",
-    serialNumber: "APL-IP15-HYD02",
+    serialNumber: "F2LZ7890N6T1",
     status: "maintenance",
-    assignee: "Service Desk HYD",
-    location: "HYD — Lounge Concierge",
-    purchaseDate: "2024-05-18",
-    purchasePrice: 999,
-    warrantyExpiry: "2025-05-18",
-    notes: "VIP guest assistance hotline handset. Scheduled for battery check.",
-    createdAt: new Date("2024-05-18").toISOString(),
-    updatedAt: new Date("2024-05-18").toISOString(),
+    assignee: "Priya Nair",
+    location: "Encalm Operations Desk T1",
+    purchaseDate: "2023-11-20",
+    purchasePrice: 134900,
+    warrantyExpiry: "2025-11-20",
+    notes: "Battery replacement requested via Apple Authorized Service.",
+    assignmentHistory: [
+      {
+        id: "hist_2",
+        assignee: "Priya Nair",
+        assignedBy: "IT Lead",
+        assignedAt: "2023-11-21T09:30:00Z",
+        location: "Encalm Operations Desk T1",
+        notes: "Airport Duty Manager device",
+      },
+    ],
+    createdAt: "2023-11-20T00:00:00.000Z",
+    updatedAt: "2024-02-01T00:00:00.000Z",
     _syncStatus: "synced",
   },
 ];
@@ -133,6 +124,7 @@ interface AssetContextValue {
   syncing: boolean;
   syncError: string | null;
   lastSyncedAt: number | null;
+  isOffline: boolean;
   getAsset: (id: string) => Asset | undefined;
   addAsset: (input: AssetInput) => Promise<Asset>;
   updateAsset: (id: string, input: AssetInput) => Promise<Asset | undefined>;
@@ -148,11 +140,12 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
+  const [isOffline, setIsOffline] = useState(!isNetworkOnline());
   const { user, getValidAccessToken } = useAuth();
 
   const spServiceRef = useRef<SharePointService | null>(null);
 
-  // Helper: write ephemeral read cache to AsyncStorage
+  // Helper: write read cache to AsyncStorage
   const updateCache = useCallback(async (items: Asset[]) => {
     try {
       const payload: CachePayload = {
@@ -165,15 +158,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Helper: get or create SharePoint service instance
-  const getSpService = useCallback(async (token: string): Promise<SharePointService> => {
-    if (!spServiceRef.current) {
-      spServiceRef.current = await createSharePointService(token);
-    }
-    return spServiceRef.current;
-  }, []);
-
-  // 1. Initial hydration: Load ephemeral cache for fast render
+  // 1. Initial hydration from cache
   useEffect(() => {
     (async () => {
       try {
@@ -195,14 +180,13 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
 
   // 2. Fetch authoritative asset data from SharePoint or refresh demo sandbox
   const refresh = useCallback(async () => {
-    // If in Demo Mode, refresh local sandbox
     if (user?.isDemo) {
       setSyncing(true);
       setSyncError(null);
       setTimeout(() => {
         setLastSyncedAt(Date.now());
         setSyncing(false);
-      }, 350);
+      }, 300);
       return;
     }
 
@@ -211,66 +195,143 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    if (!isNetworkOnline()) {
+      setIsOffline(true);
+      return;
+    }
+
     setSyncing(true);
     setSyncError(null);
 
     try {
       const serverItems = await apiFetchAll(token || undefined);
-
       setAssets(serverItems);
       const now = Date.now();
       setLastSyncedAt(now);
+      setIsOffline(false);
       await updateCache(serverItems);
     } catch (err: any) {
       const msg = err?.message || "Failed to load assets from SharePoint";
       console.warn("SharePoint load error:", msg);
       setSyncError(msg);
+      if (err?.name === "NetworkError" || !isNetworkOnline()) {
+        setIsOffline(true);
+      }
     } finally {
       setSyncing(false);
     }
   }, [user?.accessToken, user?.isDemo, getValidAccessToken, updateCache]);
+
+  // 3. Online/offline network listener and queue drainer
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+
+    const handleOnline = async () => {
+      setIsOffline(false);
+      console.log("Device reconnected online. Replaying pending offline mutations...");
+      const token = (await getValidAccessToken()) || user?.accessToken;
+
+      await drainOfflineQueue(async (mutation) => {
+        try {
+          if (mutation.action === "create") {
+            await apiCreateAsset(mutation.asset, token || undefined);
+          } else if (mutation.action === "update") {
+            const targetId = mutation.asset.spItemId || mutation.asset.id;
+            await apiUpdateAsset(targetId, mutation.asset, token || undefined, mutation.etag);
+          } else if (mutation.action === "delete") {
+            const targetId = mutation.asset.spItemId || mutation.asset.id;
+            await apiDeleteAsset(targetId, token || undefined);
+          }
+          return true;
+        } catch {
+          return false;
+        }
+      });
+
+      refresh();
+    };
+
+    const handleOffline = () => {
+      setIsOffline(true);
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [user?.accessToken, getValidAccessToken, refresh]);
 
   // Revalidate when user state changes
   useEffect(() => {
     if (user?.accessToken && !user?.isDemo) {
       refresh();
     } else if (user?.isDemo) {
-      spServiceRef.current = null;
       setLastSyncedAt(Date.now());
       setAssets((prev) => (prev.length > 0 ? prev : DEMO_SAMPLE_ASSETS));
     } else {
-      spServiceRef.current = null;
       setAssets(DEMO_SAMPLE_ASSETS);
     }
   }, [user?.accessToken, user?.isDemo, refresh]);
 
+  // Multi-key asset lookup
   const getAsset = useCallback(
-    (id: string) => assets.find((a) => a.id === id || a.spItemId === id),
+    (query: string) => assets.find((a) => matchesAsset(a, query)),
     [assets]
   );
 
-  // Create asset (supports both Live SharePoint and Demo Sandbox)
+  // 4. Create asset (Strict status + Stable ID + Assignment History + Offline queue)
   const addAsset = useCallback(
     async (input: AssetInput): Promise<Asset> => {
-      // Role-Based Access Control check
+      // 1. RBAC check
       if (user?.permissions && !user.permissions.canCreateAsset) {
         throw new Error("Unauthorized: Your role does not allow creating new assets.");
       }
 
-      // Demo Mode: Local sandbox creation
+      // 2. Strict Status Lifecycle validation
+      const statusCheck = validateStatusTransition("available", input.status, {
+        assignee: input.assignee,
+        notes: input.notes,
+        isAdmin: user?.role === "admin",
+      });
+      if (!statusCheck.valid) {
+        throw new Error(statusCheck.error);
+      }
+
+      // 3. Stable Asset ID generation
+      const stableId = generateStableAssetId(input.category, assets);
+
+      // 4. Initialize Assignment History if assigned
+      const initialHistory: AssignmentRecord[] = [];
+      if (input.status === "in_use" && input.assignee?.trim()) {
+        initialHistory.push({
+          id: `hist_${Date.now()}`,
+          assignee: input.assignee.trim(),
+          assignedBy: user?.name || "IT Staff",
+          assignedAt: new Date().toISOString(),
+          location: input.location,
+          notes: "Initial registration assignment",
+        });
+      }
+
+      const newAsset: Asset = {
+        ...input,
+        id: stableId,
+        spItemId: user?.isDemo ? String(assets.length + 1) : undefined,
+        assignmentHistory: initialHistory,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        _syncStatus: user?.isDemo ? "synced" : isNetworkOnline() ? "synced" : "pending_create",
+      };
+
+      // Demo Mode
       if (user?.isDemo) {
-        const demoAsset: Asset = {
-          ...input,
-          id: "demo-" + Date.now().toString(36),
-          spItemId: String(assets.length + 1),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          _syncStatus: "synced",
-        };
-        const next = [demoAsset, ...assets];
+        const next = [newAsset, ...assets];
         setAssets(next);
         await updateCache(next);
-        return demoAsset;
+        return newAsset;
       }
 
       const token = (await getValidAccessToken()) || user?.accessToken;
@@ -280,52 +341,109 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         );
       }
 
+      // Offline mode handling
+      if (!isNetworkOnline()) {
+        await enqueueOfflineMutation("create", newAsset);
+        const next = [newAsset, ...assets];
+        setAssets(next);
+        await updateCache(next);
+        return newAsset;
+      }
+
       setSyncing(true);
       setSyncError(null);
 
       try {
-        const createdAsset = await apiCreateAsset(input, token || undefined);
-
-        const next = [createdAsset, ...assets];
+        const createdAsset = await apiCreateAsset(newAsset, token || undefined);
+        const confirmed: Asset = {
+          ...newAsset,
+          ...createdAsset,
+          id: stableId, // Ensure stable ID is preserved
+          assignmentHistory: initialHistory,
+          _syncStatus: "synced",
+        };
+        const next = [confirmed, ...assets];
         setAssets(next);
         await updateCache(next);
-        return createdAsset;
+        return confirmed;
       } catch (err: any) {
-        const msg = err?.message || "Failed to save asset to SharePoint.";
-        setSyncError(msg);
-        throw new Error(msg);
+        // Enqueue offline if network failed
+        console.warn("API create failed, falling back to offline queue:", err);
+        newAsset._syncStatus = "pending_create";
+        await enqueueOfflineMutation("create", newAsset);
+        const next = [newAsset, ...assets];
+        setAssets(next);
+        await updateCache(next);
+        return newAsset;
       } finally {
         setSyncing(false);
       }
     },
-    [user?.accessToken, user?.isDemo, user?.permissions, assets, getValidAccessToken, updateCache]
+    [user?.accessToken, user?.isDemo, user?.permissions, user?.role, user?.name, assets, getValidAccessToken, updateCache]
   );
 
-  // Update asset (supports both Live SharePoint and Demo Sandbox)
+  // 5. Update asset (FSM transitions + History trail + Concurrency handling + Offline queue)
   const updateAsset = useCallback(
     async (id: string, input: AssetInput): Promise<Asset | undefined> => {
-      // Role-Based Access Control check
+      // 1. RBAC check
       if (user?.permissions && !user.permissions.canEditAsset) {
         throw new Error("Unauthorized: Your role does not allow editing assets.");
       }
 
-      // Demo Mode: Local sandbox update
-      if (user?.isDemo) {
-        const existing = assets.find((a) => a.id === id || a.spItemId === id);
-        if (!existing) {
-          throw new Error(`Asset with ID "${id}" not found.`);
+      const existing = assets.find((a) => matchesAsset(a, id));
+      if (!existing) {
+        throw new Error(`Asset with ID "${id}" not found.`);
+      }
+
+      // 2. Strict Status Lifecycle validation
+      const statusCheck = validateStatusTransition(existing.status, input.status, {
+        assignee: input.assignee,
+        notes: input.notes,
+        isAdmin: user?.role === "admin",
+      });
+      if (!statusCheck.valid) {
+        throw new Error(statusCheck.error);
+      }
+
+      // 3. Custody & Assignment History logging
+      let history = [...(existing.assignmentHistory || [])];
+      const assigneeChanged = (existing.assignee || "").trim() !== (input.assignee || "").trim();
+      const statusChanged = existing.status !== input.status;
+
+      if (assigneeChanged || statusChanged) {
+        // Close open custody records if returned or reassigned
+        if (input.status === "available" || assigneeChanged) {
+          history = history.map((rec) =>
+            rec.returnedAt ? rec : { ...rec, returnedAt: new Date().toISOString() }
+          );
         }
-        const updated: Asset = {
-          ...existing,
-          ...input,
-          updatedAt: new Date().toISOString(),
-        };
-        const next = assets.map((a) =>
-          a.id === id || a.spItemId === id ? updated : a
-        );
+        // If newly assigned in use, add new record
+        if (input.status === "in_use" && input.assignee?.trim()) {
+          history.push({
+            id: `hist_${Date.now()}`,
+            assignee: input.assignee.trim(),
+            assignedBy: user?.name || "IT Staff",
+            assignedAt: new Date().toISOString(),
+            location: input.location,
+            notes: input.notes || "Custody transferred",
+          });
+        }
+      }
+
+      const updatedAsset: Asset = {
+        ...existing,
+        ...input,
+        assignmentHistory: history,
+        updatedAt: new Date().toISOString(),
+        _syncStatus: user?.isDemo ? "synced" : isNetworkOnline() ? "synced" : "pending_update",
+      };
+
+      // Demo Mode
+      if (user?.isDemo) {
+        const next = assets.map((a) => (matchesAsset(a, id) ? updatedAsset : a));
         setAssets(next);
         await updateCache(next);
-        return updated;
+        return updatedAsset;
       }
 
       const token = (await getValidAccessToken()) || user?.accessToken;
@@ -335,9 +453,13 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         );
       }
 
-      const existing = assets.find((a) => a.id === id || a.spItemId === id);
-      if (!existing) {
-        throw new Error(`Asset with ID "${id}" not found.`);
+      // Offline mode handling
+      if (!isNetworkOnline()) {
+        await enqueueOfflineMutation("update", updatedAsset, existing.etag);
+        const next = assets.map((a) => (matchesAsset(a, id) ? updatedAsset : a));
+        setAssets(next);
+        await updateCache(next);
+        return updatedAsset;
       }
 
       setSyncing(true);
@@ -345,36 +467,63 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
 
       try {
         const targetId = existing.spItemId || existing.id;
-        const confirmedUpdated = await apiUpdateAsset(targetId, input, token || undefined);
-
-        const next = assets.map((a) =>
-          a.id === id || a.spItemId === id || a.spItemId === targetId ? confirmedUpdated : a
+        const confirmedUpdated = await apiUpdateAsset(
+          targetId,
+          updatedAsset,
+          token || undefined,
+          existing.etag
         );
+
+        const merged = {
+          ...updatedAsset,
+          ...confirmedUpdated,
+          assignmentHistory: history,
+          _syncStatus: "synced" as const,
+        };
+
+        const next = assets.map((a) => (matchesAsset(a, id) ? merged : a));
         setAssets(next);
         await updateCache(next);
-        return confirmedUpdated;
+        return merged;
       } catch (err: any) {
-        const msg = err?.message || "Failed to update asset in SharePoint.";
-        setSyncError(msg);
-        throw new Error(msg);
+        // Concurrency conflict detection (412 or Conflict)
+        if (err?.message?.includes("Conflict")) {
+          console.warn("Optimistic concurrency conflict detected. Reconciling...");
+          const conflict = resolveAssetConflict(updatedAsset, existing);
+          setSyncError("Notice: Changes were merged with cloud modifications.");
+          const next = assets.map((a) => (matchesAsset(a, id) ? conflict.mergedAsset : a));
+          setAssets(next);
+          await updateCache(next);
+          return conflict.mergedAsset;
+        }
+
+        // Network error fallback
+        updatedAsset._syncStatus = "pending_update";
+        await enqueueOfflineMutation("update", updatedAsset, existing.etag);
+        const next = assets.map((a) => (matchesAsset(a, id) ? updatedAsset : a));
+        setAssets(next);
+        await updateCache(next);
+        return updatedAsset;
       } finally {
         setSyncing(false);
       }
     },
-    [user?.accessToken, user?.isDemo, user?.permissions, assets, getValidAccessToken, updateCache]
+    [user?.accessToken, user?.isDemo, user?.permissions, user?.role, user?.name, assets, getValidAccessToken, updateCache]
   );
 
-  // Delete asset (supports both Live SharePoint and Demo Sandbox)
+  // 6. Delete asset
   const deleteAsset = useCallback(
     async (id: string): Promise<void> => {
-      // Role-Based Access Control check
       if (user?.permissions && !user.permissions.canDeleteAsset) {
         throw new Error("Unauthorized: Only IT Administrators can permanently delete assets.");
       }
 
-      // Demo Mode: Local sandbox deletion
+      const existing = assets.find((a) => matchesAsset(a, id));
+      if (!existing) return;
+
+      // Demo Mode
       if (user?.isDemo) {
-        const next = assets.filter((a) => a.id !== id && a.spItemId !== id);
+        const next = assets.filter((a) => !matchesAsset(a, id));
         setAssets(next);
         await updateCache(next);
         return;
@@ -387,8 +536,14 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         );
       }
 
-      const existing = assets.find((a) => a.id === id || a.spItemId === id);
-      if (!existing) return;
+      // Offline mode handling
+      if (!isNetworkOnline()) {
+        await enqueueOfflineMutation("delete", existing, existing.etag);
+        const next = assets.filter((a) => !matchesAsset(a, id));
+        setAssets(next);
+        await updateCache(next);
+        return;
+      }
 
       setSyncing(true);
       setSyncError(null);
@@ -396,19 +551,20 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       try {
         const targetId = existing.spItemId || existing.id;
         await apiDeleteAsset(targetId, token || undefined);
-
-        const next = assets.filter((a) => a.id !== id && a.spItemId !== targetId);
+        const next = assets.filter((a) => !matchesAsset(a, id));
         setAssets(next);
         await updateCache(next);
       } catch (err: any) {
-        const msg = err?.message || "Failed to delete asset from SharePoint.";
-        setSyncError(msg);
-        throw new Error(msg);
+        console.warn("Delete API failed, enqueuing offline delete:", err);
+        await enqueueOfflineMutation("delete", existing, existing.etag);
+        const next = assets.filter((a) => !matchesAsset(a, id));
+        setAssets(next);
+        await updateCache(next);
       } finally {
         setSyncing(false);
       }
     },
-    [user?.accessToken, user?.isDemo, assets, getValidAccessToken, updateCache]
+    [user?.accessToken, user?.isDemo, user?.permissions, assets, getValidAccessToken, updateCache]
   );
 
   const value = useMemo<AssetContextValue>(
@@ -418,6 +574,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       syncing,
       syncError,
       lastSyncedAt,
+      isOffline,
       getAsset,
       addAsset,
       updateAsset,
@@ -430,6 +587,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       syncing,
       syncError,
       lastSyncedAt,
+      isOffline,
       getAsset,
       addAsset,
       updateAsset,

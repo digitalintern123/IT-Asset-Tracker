@@ -16,6 +16,16 @@ export type SyncStatus =
   | "pending_update"
   | "pending_delete";
 
+export interface AssignmentRecord {
+  id: string;
+  assignee: string;
+  assignedBy?: string;
+  assignedAt: string;
+  returnedAt?: string | null;
+  location?: string;
+  notes?: string;
+}
+
 export interface Asset {
   id: string;
   spItemId?: string;
@@ -29,6 +39,9 @@ export interface Asset {
   purchasePrice: number;
   warrantyExpiry: string | null;
   notes: string;
+  assignmentHistory?: AssignmentRecord[];
+  etag?: string;
+  version?: number;
   createdAt: string;
   updatedAt: string;
   _syncStatus?: SyncStatus;
@@ -40,9 +53,10 @@ export interface QueuedMutation {
   asset: Asset;
   timestamp: number;
   retryCount: number;
+  etag?: string;
 }
 
 export type AssetInput = Omit<
   Asset,
-  "id" | "createdAt" | "updatedAt" | "spItemId" | "_syncStatus"
+  "id" | "createdAt" | "updatedAt" | "spItemId" | "_syncStatus" | "etag" | "version"
 >;

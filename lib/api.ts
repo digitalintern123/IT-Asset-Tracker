@@ -79,14 +79,25 @@ export async function apiCreateAsset(input: AssetInput, token?: string): Promise
 export async function apiUpdateAsset(
   id: string,
   input: AssetInput,
-  token?: string
+  token?: string,
+  ifMatchEtag?: string
 ): Promise<Asset> {
   try {
+    const headers = getHeaders(token);
+    if (ifMatchEtag) {
+      headers["If-Match"] = ifMatchEtag;
+    }
+
     const res = await fetch(`${API_BASE}/api/assets/${encodeURIComponent(id)}`, {
       method: "PATCH",
-      headers: getHeaders(token),
+      headers,
       body: JSON.stringify(input),
     });
+
+    if (res.status === 412 || res.status === 409) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.error || "Conflict: Asset was updated by another user.");
+    }
 
     if (res.ok) {
       const data = await res.json();
@@ -101,7 +112,7 @@ export async function apiUpdateAsset(
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `Failed to update asset (HTTP ${res.status})`);
   } catch (err: any) {
-    if (token) {
+    if (token && !err.message?.includes("Conflict")) {
       const sp = await createSharePointService(token);
       return await sp.update(id, input);
     }

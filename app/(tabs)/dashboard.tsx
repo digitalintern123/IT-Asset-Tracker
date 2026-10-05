@@ -23,14 +23,11 @@ import {
 } from "@/constants/categories";
 import { useAssets } from "@/contexts/AssetContext";
 import { useColors } from "@/hooks/useColors";
+import { formatRupees } from "@/lib/currency";
 import type { AssetStatus } from "@/types/asset";
 
 function formatMoney(n: number): string {
-  if (n >= 1_000_000)
-    return "$" + (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
-  if (n >= 1_000)
-    return "$" + (n / 1_000).toFixed(1).replace(/\.0$/, "") + "k";
-  return "$" + n.toFixed(0);
+  return formatRupees(n, { compact: true });
 }
 
 function daysUntil(dateStr: string): number {

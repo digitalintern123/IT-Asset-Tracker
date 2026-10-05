@@ -67,6 +67,14 @@ export function AssetForm({
       setError("Name is required");
       return;
     }
+    if (status === "in_use" && !assignee.trim()) {
+      setError("Assignee name is strictly required when marking asset as In Use");
+      return;
+    }
+    if (status === "maintenance" && !notes.trim()) {
+      setError("Maintenance notes detailing the issue or repair reason are required");
+      return;
+    }
     setError(null);
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -186,11 +194,11 @@ export function AssetForm({
             autoCapitalize="none"
           />
         </Field>
-        <Field label="Purchase price (USD)" colors={colors}>
+        <Field label="Purchase price (₹ INR)" colors={colors}>
           <TextInput
             value={purchasePriceText}
             onChangeText={setPurchasePriceText}
-            placeholder="0.00"
+            placeholder="0"
             placeholderTextColor={colors.mutedForeground}
             keyboardType="decimal-pad"
             style={inputStyle}

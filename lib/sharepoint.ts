@@ -37,6 +37,27 @@ export function fromSpItem(item: any): Asset {
   const spId = String(item.id || f.id || f.ID || "");
   const assetId = String(f.AssetId || f.AssetID || spId || Date.now().toString(36));
 
+  // Extract Assignment History
+  let assignmentHistory = [];
+  if (Array.isArray(f.AssignmentHistory)) {
+    assignmentHistory = f.AssignmentHistory;
+  } else if (typeof f.AssignmentHistory === "string" && f.AssignmentHistory.trim()) {
+    try {
+      assignmentHistory = JSON.parse(f.AssignmentHistory);
+    } catch {}
+  } else if (f.Notes && typeof f.Notes === "string" && f.Notes.includes("<!-- HISTORY:")) {
+    try {
+      const match = f.Notes.match(/<!-- HISTORY:(.*?) -->/);
+      if (match && match[1]) {
+        assignmentHistory = JSON.parse(match[1]);
+      }
+    } catch {}
+  }
+
+  const cleanNotes = (f.Notes || f.Description || "")
+    .replace(/<!-- HISTORY:.*? -->/g, "")
+    .trim();
+
   return {
     id: assetId,
     spItemId: spId,
@@ -55,7 +76,10 @@ export function fromSpItem(item: any): Asset {
     purchaseDate: String(f.PurchaseDate || ""),
     purchasePrice: Number(f.PurchasePrice) || 0,
     warrantyExpiry: f.WarrantyExpiry ? String(f.WarrantyExpiry) : null,
-    notes: String(f.Notes || f.Description || ""),
+    notes: cleanNotes,
+    assignmentHistory,
+    etag: item["@odata.etag"] || item.eTag || null,
+    version: Number(item.version || f._UIVersionString || 1),
     createdAt: String(f.Created || item.createdDateTime || new Date().toISOString()),
     updatedAt: String(f.Modified || item.lastModifiedDateTime || new Date().toISOString()),
     _syncStatus: "synced",
@@ -63,6 +87,11 @@ export function fromSpItem(item: any): Asset {
 }
 
 export function toSpFields(input: AssetInput, assetId?: string): Record<string, unknown> {
+  let notesWithHistory = input.notes || "";
+  if (Array.isArray(input.assignmentHistory) && input.assignmentHistory.length > 0) {
+    notesWithHistory = `${notesWithHistory}\n<!-- HISTORY:${JSON.stringify(input.assignmentHistory)} -->`.trim();
+  }
+
   const fields: Record<string, unknown> = {
     Title: input.name,
     Category: input.category,
@@ -71,9 +100,9 @@ export function toSpFields(input: AssetInput, assetId?: string): Record<string, 
     Assignee: input.assignee || "",
     Location: input.location || "",
     PurchaseDate: input.purchaseDate || "",
-    PurchasePrice: input.purchasePrice || 0,
+    PurchasePrice: Number(input.purchasePrice) || 0,
     WarrantyExpiry: input.warrantyExpiry || "",
-    Notes: input.notes || "",
+    Notes: notesWithHistory,
   };
 
   if (assetId) {
@@ -169,16 +198,31 @@ export async function createSharePointService(
   };
 
   async function fetchAll(): Promise<Asset[]> {
-    const res = await fetch(`${base}?expand=fields&$top=500`, { headers });
-    if (!res.ok) {
-      throw new Error(`Failed to load assets from SharePoint: HTTP ${res.status}`);
+    let nextUrl: string | null = `${base}?expand=fields&$top=200`;
+    let allAssets: Asset[] = [];
+    let pageCount = 0;
+
+    while (nextUrl && pageCount < 50) {
+      pageCount++;
+      const res = await fetch(nextUrl, { headers });
+      if (!res.ok) {
+        throw new Error(`Failed to load assets from SharePoint: HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      const items = (data.value || []).map(fromSpItem);
+      allAssets = allAssets.concat(items);
+      nextUrl = data["@odata.nextLink"] || null;
     }
-    const data = await res.json();
-    return (data.value || []).map(fromSpItem);
+
+    return allAssets;
   }
 
   async function create(input: AssetInput): Promise<Asset> {
-    const assetId = "AST-" + Date.now().toString(36).toUpperCase();
+    const year = new Date().getFullYear();
+    const rand = Math.floor(1000 + Math.random() * 9000);
+    const assetId = input.id && input.id.startsWith("ENC-")
+      ? input.id
+      : `ENC-AST-${year}-${rand}`;
     const fields = toSpFields(input, assetId);
 
     const res = await fetch(base, {

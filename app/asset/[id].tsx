@@ -21,6 +21,7 @@ import { CATEGORY_ICONS } from "@/constants/categories";
 import { useAssets } from "@/contexts/AssetContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { formatRupees } from "@/lib/currency";
 import {
   openAssignmentEmail,
   sendAssetAssignedNotification,
@@ -217,6 +218,7 @@ export default function AssetDetailScreen() {
       </View>
 
       <DetailGroup title="Identification" colors={colors}>
+        <DetailRow label="Asset Tag (ID)" value={asset.id} colors={colors} />
         <DetailRow label="Serial number" value={asset.serialNumber || "—"} colors={colors} />
         <DetailRow label="Category" value={asset.category} colors={colors} last />
       </DetailGroup>
@@ -232,7 +234,7 @@ export default function AssetDetailScreen() {
           label="Purchase price"
           value={
             asset.purchasePrice
-              ? `$${asset.purchasePrice.toLocaleString()}`
+              ? formatRupees(asset.purchasePrice)
               : "—"
           }
           colors={colors}
@@ -244,6 +246,61 @@ export default function AssetDetailScreen() {
           last
         />
       </DetailGroup>
+
+      {asset.assignmentHistory && asset.assignmentHistory.length > 0 ? (
+        <DetailGroup title="Custody & Assignment History" colors={colors}>
+          {asset.assignmentHistory.map((record, index) => {
+            const isLast = index === (asset.assignmentHistory?.length || 0) - 1;
+            const period = record.returnedAt
+              ? `${formatDate(record.assignedAt)} – ${formatDate(record.returnedAt)}`
+              : `Active since ${formatDate(record.assignedAt)}`;
+            return (
+              <View
+                key={record.id || index}
+                style={[
+                  styles.detailRow,
+                  !isLast && {
+                    borderBottomWidth: 1,
+                    borderBottomColor: colors.border,
+                  },
+                ]}
+              >
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={[styles.detailValue, { color: colors.foreground }]}>
+                    {record.assignee}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: colors.mutedForeground, fontFamily: "Inter_400Regular" }}>
+                    {period} {record.location ? `· ${record.location}` : ""}
+                  </Text>
+                  {record.notes ? (
+                    <Text style={{ fontSize: 11, color: colors.mutedForeground, fontStyle: "italic", marginTop: 2 }}>
+                      "{record.notes}"
+                    </Text>
+                  ) : null}
+                </View>
+                <View
+                  style={{
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    borderRadius: 6,
+                    backgroundColor: record.returnedAt ? colors.muted : "#E6F4EA",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontFamily: "Inter_600SemiBold",
+                      color: record.returnedAt ? colors.mutedForeground : "#137333",
+                    }}
+                  >
+                    {record.returnedAt ? "Returned" : "Active"}
+                  </Text>
+                </View>
+              </View>
+            );
+          })}
+        </DetailGroup>
+      ) : null}
 
       <View style={{ paddingHorizontal: 20, marginTop: 20, gap: 10 }}>
         <Text

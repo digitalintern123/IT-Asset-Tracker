@@ -30,7 +30,13 @@
         "android.permission.POST_NOTIFICATIONS"
       ]
     },
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
     "web": {
+      "bundler": "metro",
       "favicon": "./assets/brand/encalm-favicon.png",
       "output": "static"
     },

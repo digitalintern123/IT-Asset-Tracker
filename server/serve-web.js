@@ -203,7 +203,8 @@ const server = http.createServer(async (req, res) => {
             return;
           }
           const body = await parseBody(req);
-          const updated = await sharepointApi.updateAsset(userToken, assetId, body);
+          const ifMatch = req.headers["if-match"] || null;
+          const updated = await sharepointApi.updateAsset(userToken, assetId, body, ifMatch);
           sendJson(res, 200, { data: updated });
           return;
         }
@@ -222,7 +223,8 @@ const server = http.createServer(async (req, res) => {
         return;
       } catch (apiErr) {
         console.error(`API Error on ${method} ${cleanUrl}:`, apiErr.message);
-        sendJson(res, 500, { error: apiErr.message || "SharePoint API Error" });
+        const status = apiErr.statusCode || 500;
+        sendJson(res, status, { error: apiErr.message || "SharePoint API Error" });
         return;
       }
     }

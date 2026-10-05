@@ -210,6 +210,28 @@ function spItemToAsset(item) {
   const spId = String(item.id || f.id || f.ID || "");
   const assetId = String(f.AssetId || f.AssetID || spId || Date.now().toString(36));
 
+  // Extract Assignment History
+  let assignmentHistory = [];
+  if (Array.isArray(f.AssignmentHistory)) {
+    assignmentHistory = f.AssignmentHistory;
+  } else if (typeof f.AssignmentHistory === "string" && f.AssignmentHistory.trim()) {
+    try {
+      assignmentHistory = JSON.parse(f.AssignmentHistory);
+    } catch {}
+  } else if (f.Notes && typeof f.Notes === "string" && f.Notes.includes("<!-- HISTORY:")) {
+    try {
+      const match = f.Notes.match(/<!-- HISTORY:(.*?) -->/);
+      if (match && match[1]) {
+        assignmentHistory = JSON.parse(match[1]);
+      }
+    } catch {}
+  }
+
+  // Clean notes from embedded history
+  const cleanNotes = (f.Notes || f.Description || "")
+    .replace(/<!-- HISTORY:.*? -->/g, "")
+    .trim();
+
   return {
     id: assetId,
     spItemId: spId,
@@ -228,7 +250,10 @@ function spItemToAsset(item) {
     purchaseDate: String(f.PurchaseDate || ""),
     purchasePrice: Number(f.PurchasePrice) || 0,
     warrantyExpiry: f.WarrantyExpiry ? String(f.WarrantyExpiry) : null,
-    notes: String(f.Notes || f.Description || ""),
+    notes: cleanNotes,
+    assignmentHistory,
+    etag: item["@odata.etag"] || item.eTag || null,
+    version: Number(item.version || f._UIVersionString || 1),
     createdAt: String(f.Created || item.createdDateTime || new Date().toISOString()),
     updatedAt: String(f.Modified || item.lastModifiedDateTime || new Date().toISOString()),
     _syncStatus: "synced",
@@ -239,6 +264,11 @@ function spItemToAsset(item) {
  * Format input fields for SharePoint write.
  */
 function assetInputToSpFields(input, assetId = null) {
+  let notesWithHistory = input.notes || "";
+  if (Array.isArray(input.assignmentHistory) && input.assignmentHistory.length > 0) {
+    notesWithHistory = `${notesWithHistory}\n<!-- HISTORY:${JSON.stringify(input.assignmentHistory)} -->`.trim();
+  }
+
   const fields = {
     Title: input.name,
     Category: input.category,
@@ -249,7 +279,7 @@ function assetInputToSpFields(input, assetId = null) {
     PurchaseDate: input.purchaseDate || "",
     PurchasePrice: Number(input.purchasePrice) || 0,
     WarrantyExpiry: input.warrantyExpiry || "",
-    Notes: input.notes || "",
+    Notes: notesWithHistory,
   };
 
   if (assetId) {
@@ -260,37 +290,72 @@ function assetInputToSpFields(input, assetId = null) {
 }
 
 /**
- * Fetch all assets from SharePoint list.
+ * Category code mapping for stable IDs.
+ */
+const CATEGORY_CODES = {
+  Laptop: "LAP",
+  Desktop: "DSK",
+  Monitor: "MON",
+  Phone: "PHN",
+  Tablet: "TAB",
+  Furniture: "FUR",
+  Equipment: "EQP",
+  Other: "AST",
+};
+
+/**
+ * Fetch all assets from SharePoint list with automated @odata.nextLink pagination.
  */
 async function fetchAllAssets(userToken) {
   const token = await getEffectiveToken(userToken);
   const siteId = await resolveSiteId(token);
   const listId = await resolveListId(token, siteId);
 
-  const res = await request({
-    hostname: GRAPH_HOST,
-    path: `/v1.0/sites/${siteId}/lists/${listId}/items?expand=fields&$top=500`,
-    method: "GET",
-    headers: { Authorization: `Bearer ${token}` },
-    timeout: 15000,
-  });
+  let nextUrl = `/v1.0/sites/${siteId}/lists/${listId}/items?expand=fields&$top=200`;
+  let allAssets = [];
+  let pageCount = 0;
 
-  if (res.status !== 200) {
-    throw new Error(`Graph error (${res.status}): ${JSON.stringify(res.data)}`);
+  while (nextUrl && pageCount < 50) {
+    pageCount++;
+    const urlObj = nextUrl.startsWith("http") ? new URL(nextUrl) : null;
+    const reqPath = urlObj ? `${urlObj.pathname}${urlObj.search}` : nextUrl;
+
+    const res = await request({
+      hostname: GRAPH_HOST,
+      path: reqPath,
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 15000,
+    });
+
+    if (res.status !== 200) {
+      throw new Error(`Graph error (${res.status}): ${JSON.stringify(res.data)}`);
+    }
+
+    const items = (res.data.value || []).map(spItemToAsset);
+    allAssets = allAssets.concat(items);
+
+    nextUrl = res.data["@odata.nextLink"] || null;
   }
 
-  return (res.data.value || []).map(spItemToAsset);
+  return allAssets;
 }
 
 /**
- * Create a new asset in SharePoint list.
+ * Create a new asset in SharePoint list with stable ID generation.
  */
 async function createAsset(userToken, input) {
   const token = await getEffectiveToken(userToken);
   const siteId = await resolveSiteId(token);
   const listId = await resolveListId(token, siteId);
 
-  const assetId = "AST-" + Date.now().toString(36).toUpperCase();
+  const catCode = CATEGORY_CODES[input.category] || "AST";
+  const year = new Date().getFullYear();
+  const randNum = String(Math.floor(1000 + Math.random() * 9000));
+  const assetId = input.id && input.id.startsWith("ENC-")
+    ? input.id
+    : `ENC-${catCode}-${year}-${randNum}`;
+
   const fields = assetInputToSpFields(input, assetId);
 
   const res = await request(
@@ -315,28 +380,39 @@ async function createAsset(userToken, input) {
 }
 
 /**
- * Update an existing asset in SharePoint list.
+ * Update an existing asset in SharePoint list with optional If-Match ETag concurrency.
  */
-async function updateAsset(userToken, id, input) {
+async function updateAsset(userToken, id, input, ifMatchEtag = null) {
   const token = await getEffectiveToken(userToken);
   const siteId = await resolveSiteId(token);
   const listId = await resolveListId(token, siteId);
 
   const fields = assetInputToSpFields(input);
+  const reqHeaders = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+
+  if (ifMatchEtag) {
+    reqHeaders["If-Match"] = ifMatchEtag;
+  }
 
   const res = await request(
     {
       hostname: GRAPH_HOST,
       path: `/v1.0/sites/${siteId}/lists/${listId}/items/${id}/fields`,
       method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
+      headers: reqHeaders,
       timeout: 15000,
     },
     fields
   );
+
+  if (res.status === 412 || res.status === 409) {
+    const err = new Error("Conflict: Asset was modified by another user (ETag mismatch).");
+    err.statusCode = 412;
+    throw err;
+  }
 
   if (res.status !== 200 && res.status !== 204) {
     throw new Error(`Graph update failed (${res.status}): ${JSON.stringify(res.data)}`);
