@@ -11,9 +11,16 @@ import React, {
 
 import { useAuth } from "@/contexts/AuthContext";
 import { MS_CONFIG, isMsConfigured } from "@/lib/msConfig";
-import type { Asset, AssetCategory, AssetInput, AssetStatus } from "@/types/asset";
+import type {
+  Asset,
+  AssetCategory,
+  AssetInput,
+  AssetStatus,
+  QueuedMutation,
+} from "@/types/asset";
 
-const STORAGE_KEY = "@asset-tracker/assets/v1";
+const STORAGE_KEY = "@asset-tracker/assets/v2";
+const QUEUE_STORAGE_KEY = "@asset-tracker/mutation-queue/v1";
 const GRAPH = "https://graph.microsoft.com/v1.0";
 
 function generateId(): string {
@@ -40,11 +47,11 @@ function mapStatus(raw: string): AssetStatus {
   return "available";
 }
 
-// Map SharePoint fields (via Microsoft Graph or direct) to Asset type
 function mapSpItemToAsset(item: any): Asset {
   const f = item.fields || item;
   return {
     id: String(f.AssetId || f.AssetID || item.id || f.id || f.ID || generateId()),
+    spItemId: item.id ? String(item.id) : undefined,
     name: String(f.Title || f.ComputerName || f.AssetID || f.name || "Unknown"),
     category: mapCategory(f.Category || f.AssetType || "Other"),
     serialNumber: String(f.SerialNumber || f.Serial_x0020_Number || ""),
@@ -57,6 +64,7 @@ function mapSpItemToAsset(item: any): Asset {
     notes: String(f.Notes || f.Description || ""),
     createdAt: String(f.Created || item.createdDateTime || new Date().toISOString()),
     updatedAt: String(f.Modified || item.lastModifiedDateTime || new Date().toISOString()),
+    _syncStatus: "synced",
   };
 }
 
@@ -91,6 +99,7 @@ const SAMPLE_ASSETS: Asset[] = [
     notes: "Engineering primary workstation.",
     createdAt: new Date("2024-03-12").toISOString(),
     updatedAt: new Date("2024-03-12").toISOString(),
+    _syncStatus: "synced",
   },
   {
     id: "seed-2",
@@ -106,6 +115,7 @@ const SAMPLE_ASSETS: Asset[] = [
     notes: "",
     createdAt: new Date("2023-11-04").toISOString(),
     updatedAt: new Date("2023-11-04").toISOString(),
+    _syncStatus: "synced",
   },
   {
     id: "seed-3",
@@ -121,6 +131,7 @@ const SAMPLE_ASSETS: Asset[] = [
     notes: "Sales team device.",
     createdAt: new Date("2024-09-22").toISOString(),
     updatedAt: new Date("2024-09-22").toISOString(),
+    _syncStatus: "synced",
   },
 ];
 
@@ -129,6 +140,7 @@ interface AssetContextValue {
   loaded: boolean;
   syncing: boolean;
   syncError: string | null;
+  pendingSyncCount: number;
   getAsset: (id: string) => Asset | undefined;
   addAsset: (input: AssetInput) => Promise<Asset>;
   updateAsset: (id: string, input: AssetInput) => Promise<Asset | undefined>;
@@ -136,29 +148,44 @@ interface AssetContextValue {
   clearAll: () => Promise<void>;
   loadSamples: () => Promise<void>;
   syncFromSharePoint: () => Promise<void>;
+  flushQueue: () => Promise<void>;
 }
 
 const AssetContext = createContext<AssetContextValue | undefined>(undefined);
 
 export function AssetProvider({ children }: { children: React.ReactNode }) {
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [queue, setQueue] = useState<QueuedMutation[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const { user } = useAuth();
 
-  // Cached Graph identifiers
+  // Cached Microsoft Graph resource IDs
   const siteIdRef = useRef<string | null>(null);
   const listIdRef = useRef<string | null>(null);
+  const isFlushingRef = useRef<boolean>(false);
 
-  // Load from local storage on mount
+  // 1. Initial hydration from local AsyncStorage
   useEffect(() => {
     (async () => {
       try {
-        const raw = await AsyncStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          setAssets(JSON.parse(raw) as Asset[]);
+        const [rawAssets, rawQueue] = await Promise.all([
+          AsyncStorage.getItem(STORAGE_KEY),
+          AsyncStorage.getItem(QUEUE_STORAGE_KEY),
+        ]);
+
+        if (rawQueue) {
+          try {
+            setQueue(JSON.parse(rawQueue) as QueuedMutation[]);
+          } catch {}
+        }
+
+        if (rawAssets) {
+          const parsed = JSON.parse(rawAssets) as Asset[];
+          setAssets(parsed);
         } else {
+          // If no user is logged in, show sample assets
           setAssets(SAMPLE_ASSETS);
           await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(SAMPLE_ASSETS));
         }
@@ -170,74 +197,213 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  // Resolve SharePoint site and list IDs via Microsoft Graph
-  const resolveGraphIds = useCallback(async (token: string): Promise<{ siteId: string; listId: string }> => {
-    if (siteIdRef.current && listIdRef.current) {
-      return { siteId: siteIdRef.current, listId: listIdRef.current };
-    }
-
-    const url = new URL(MS_CONFIG.SHAREPOINT_SITE_URL);
-    const hostname = url.hostname;
-    const sitePath = url.pathname.replace(/^\/|\/$/g, "");
-    const siteEndpoint = sitePath ? `${GRAPH}/sites/${hostname}:/${sitePath}` : `${GRAPH}/sites/${hostname}`;
-
-    // 1. Get site ID
-    const siteRes = await fetch(siteEndpoint, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!siteRes.ok) {
-      throw new Error(`Graph failed to resolve SharePoint site (${siteRes.status})`);
-    }
-    const siteData = await siteRes.json();
-    const siteId = siteData.id;
-    siteIdRef.current = siteId;
-
-    // 2. Get list ID
-    let listId: string | null = null;
-    const filterUrl = `${GRAPH}/sites/${siteId}/lists?$filter=displayName eq '${encodeURIComponent(MS_CONFIG.LIST_NAME)}'`;
-    const listRes = await fetch(filterUrl, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (listRes.ok) {
-      const listData = await listRes.json();
-      if (listData.value && listData.value.length > 0) {
-        listId = listData.value[0].id;
-      }
-    }
-
-    // Fallback: list all lists to handle case differences
-    if (!listId) {
-      const allListsRes = await fetch(`${GRAPH}/sites/${siteId}/lists`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (allListsRes.ok) {
-        const allData = await allListsRes.json();
-        const target = MS_CONFIG.LIST_NAME.trim().toLowerCase();
-        const match = (allData.value || []).find(
-          (l: any) =>
-            (l.displayName && l.displayName.trim().toLowerCase() === target) ||
-            (l.name && l.name.trim().toLowerCase() === target)
-        );
-        if (match) listId = match.id;
-      }
-    }
-
-    if (!listId) {
-      throw new Error(`SharePoint list "${MS_CONFIG.LIST_NAME}" not found`);
-    }
-
-    listIdRef.current = listId;
-    return { siteId, listId };
+  // Save assets to local replica
+  const persistAssets = useCallback(async (next: Asset[]) => {
+    setAssets(next);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   }, []);
 
-  // Sync from SharePoint via Microsoft Graph API
+  // Save mutation queue to local storage
+  const persistQueue = useCallback(async (nextQueue: QueuedMutation[]) => {
+    setQueue(nextQueue);
+    await AsyncStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(nextQueue));
+  }, []);
+
+  // Enqueue a local mutation for background synchronization
+  const enqueueMutation = useCallback(
+    async (action: "create" | "update" | "delete", asset: Asset) => {
+      const mutation: QueuedMutation = {
+        id: generateId(),
+        action,
+        asset,
+        timestamp: Date.now(),
+        retryCount: 0,
+      };
+      const updatedQueue = [...queue.filter((q) => q.asset.id !== asset.id || q.action !== action), mutation];
+      await persistQueue(updatedQueue);
+      return mutation;
+    },
+    [queue, persistQueue]
+  );
+
+  // Resolve SharePoint site and list IDs via Microsoft Graph
+  const resolveGraphIds = useCallback(
+    async (token: string): Promise<{ siteId: string; listId: string }> => {
+      if (siteIdRef.current && listIdRef.current) {
+        return { siteId: siteIdRef.current, listId: listIdRef.current };
+      }
+
+      const url = new URL(MS_CONFIG.SHAREPOINT_SITE_URL);
+      const hostname = url.hostname;
+      const sitePath = url.pathname.replace(/^\/|\/$/g, "");
+      const siteEndpoint = sitePath
+        ? `${GRAPH}/sites/${hostname}:/${sitePath}`
+        : `${GRAPH}/sites/${hostname}`;
+
+      const siteRes = await fetch(siteEndpoint, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!siteRes.ok) {
+        throw new Error(`Graph failed to resolve site (${siteRes.status})`);
+      }
+      const siteData = await siteRes.json();
+      const siteId = siteData.id;
+      siteIdRef.current = siteId;
+
+      let listId: string | null = null;
+      const filterUrl = `${GRAPH}/sites/${siteId}/lists?$filter=displayName eq '${encodeURIComponent(MS_CONFIG.LIST_NAME)}'`;
+      const listRes = await fetch(filterUrl, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (listRes.ok) {
+        const listData = await listRes.json();
+        if (listData.value && listData.value.length > 0) {
+          listId = listData.value[0].id;
+        }
+      }
+
+      if (!listId) {
+        const allListsRes = await fetch(`${GRAPH}/sites/${siteId}/lists`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (allListsRes.ok) {
+          const allData = await allListsRes.json();
+          const target = MS_CONFIG.LIST_NAME.trim().toLowerCase();
+          const match = (allData.value || []).find(
+            (l: any) =>
+              (l.displayName && l.displayName.trim().toLowerCase() === target) ||
+              (l.name && l.name.trim().toLowerCase() === target)
+          );
+          if (match) listId = match.id;
+        }
+      }
+
+      if (!listId) {
+        throw new Error(`SharePoint list "${MS_CONFIG.LIST_NAME}" not found`);
+      }
+
+      listIdRef.current = listId;
+      return { siteId, listId };
+    },
+    []
+  );
+
+  // Helper: Find SharePoint internal Item ID by AssetId field
+  const findSpItemId = useCallback(
+    async (token: string, siteId: string, listId: string, assetId: string): Promise<string | null> => {
+      const url = `${GRAPH}/sites/${siteId}/lists/${listId}/items?expand=fields&$filter=fields/AssetId eq '${assetId}'`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        return data.value?.[0]?.id ?? null;
+      }
+      return null;
+    },
+    []
+  );
+
+  // Flush the offline mutation queue to SharePoint
+  const flushQueue = useCallback(async () => {
+    if (!user?.accessToken || !isMsConfigured() || queue.length === 0 || isFlushingRef.current) {
+      return;
+    }
+
+    isFlushingRef.current = true;
+    const remainingQueue: QueuedMutation[] = [];
+    let updatedAssets = [...assets];
+
+    try {
+      const { siteId, listId } = await resolveGraphIds(user.accessToken);
+
+      for (const item of queue) {
+        try {
+          if (item.action === "create") {
+            const createRes = await fetch(`${GRAPH}/sites/${siteId}/lists/${listId}/items`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${user.accessToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ fields: assetToSpFields(item.asset) }),
+            });
+            if (createRes.ok) {
+              const createdData = await createRes.json();
+              updatedAssets = updatedAssets.map((a) =>
+                a.id === item.asset.id
+                  ? { ...a, spItemId: createdData.id, _syncStatus: "synced" }
+                  : a
+              );
+            } else {
+              remainingQueue.push({ ...item, retryCount: item.retryCount + 1 });
+            }
+          } else if (item.action === "update") {
+            let targetId = item.asset.spItemId;
+            if (!targetId) {
+              targetId = (await findSpItemId(user.accessToken, siteId, listId, item.asset.id)) || undefined;
+            }
+            if (targetId) {
+              const patchRes = await fetch(`${GRAPH}/sites/${siteId}/lists/${listId}/items/${targetId}/fields`, {
+                method: "PATCH",
+                headers: {
+                  Authorization: `Bearer ${user.accessToken}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify(assetToSpFields(item.asset)),
+              });
+              if (patchRes.ok) {
+                updatedAssets = updatedAssets.map((a) =>
+                  a.id === item.asset.id ? { ...a, _syncStatus: "synced" } : a
+                );
+              } else {
+                remainingQueue.push({ ...item, retryCount: item.retryCount + 1 });
+              }
+            } else {
+              // Item doesn't exist yet on SharePoint, convert to create
+              remainingQueue.push({ ...item, action: "create" });
+            }
+          } else if (item.action === "delete") {
+            let targetId = item.asset.spItemId;
+            if (!targetId) {
+              targetId = (await findSpItemId(user.accessToken, siteId, listId, item.asset.id)) || undefined;
+            }
+            if (targetId) {
+              const delRes = await fetch(`${GRAPH}/sites/${siteId}/lists/${listId}/items/${targetId}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${user.accessToken}` },
+              });
+              if (!delRes.ok && delRes.status !== 404) {
+                remainingQueue.push({ ...item, retryCount: item.retryCount + 1 });
+              }
+            }
+          }
+        } catch {
+          remainingQueue.push({ ...item, retryCount: item.retryCount + 1 });
+        }
+      }
+
+      await persistQueue(remainingQueue);
+      await persistAssets(updatedAssets);
+    } catch (err: any) {
+      console.warn("Queue flush error:", err?.message);
+    } finally {
+      isFlushingRef.current = false;
+    }
+  }, [user?.accessToken, queue, assets, resolveGraphIds, findSpItemId, persistQueue, persistAssets]);
+
+  // Synchronize master data from SharePoint
   const syncFromSharePoint = useCallback(async () => {
     if (!user?.accessToken || !isMsConfigured()) return;
     setSyncing(true);
     setSyncError(null);
 
     try {
+      // 1. Flush any pending mutations first
+      if (queue.length > 0) {
+        await flushQueue();
+      }
+
+      // 2. Fetch authoritative master list from SharePoint
       const { siteId, listId } = await resolveGraphIds(user.accessToken);
       const itemsUrl = `${GRAPH}/sites/${siteId}/lists/${listId}/items?expand=fields&$top=500`;
 
@@ -249,153 +415,133 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (!resp.ok) {
-        throw new Error(`SharePoint sync failed: HTTP ${resp.status}`);
+        throw new Error(`SharePoint error: HTTP ${resp.status}`);
       }
 
       const data = await resp.json();
-      const items: Asset[] = (data.value || []).map(mapSpItemToAsset);
+      const serverItems: Asset[] = (data.value || []).map(mapSpItemToAsset);
 
-      if (items.length > 0) {
-        setAssets(items);
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+      // 3. Reconcile server master with local optimistic pending items
+      const pendingCreates = assets.filter((a) => a._syncStatus === "pending_create");
+      const pendingUpdates = new Map(
+        assets.filter((a) => a._syncStatus === "pending_update").map((a) => [a.id, a])
+      );
+      const pendingDeletes = new Set(
+        assets.filter((a) => a._syncStatus === "pending_delete").map((a) => a.id)
+      );
+
+      // Merge: server master items, overriding with pending local updates, removing pending deletes
+      const reconciled: Asset[] = serverItems
+        .filter((spItem) => !pendingDeletes.has(spItem.id))
+        .map((spItem) => {
+          const pending = pendingUpdates.get(spItem.id);
+          return pending ? pending : spItem;
+        });
+
+      // Add any locally created assets not yet recorded on server
+      const serverIds = new Set(serverItems.map((s) => s.id));
+      for (const pending of pendingCreates) {
+        if (!serverIds.has(pending.id)) {
+          reconciled.unshift(pending);
+        }
       }
+
+      // When signed in, completely purge sample/seed assets
+      const cleanAssets = reconciled.filter((a) => !a.id.startsWith("seed-"));
+
+      await persistAssets(cleanAssets);
     } catch (e: any) {
       const msg = e?.message || "Failed to sync from SharePoint";
-      console.warn("SharePoint sync warning:", msg);
       setSyncError(msg);
+      console.warn("SharePoint sync warning:", msg);
     } finally {
       setSyncing(false);
     }
-  }, [user?.accessToken, resolveGraphIds]);
+  }, [user?.accessToken, queue, assets, flushQueue, resolveGraphIds, persistAssets]);
 
-  // Auto-sync when user logs in with valid access token
+  // When user signs in, trigger sync and purge demo assets
   useEffect(() => {
     if (user?.accessToken) {
       syncFromSharePoint();
     }
-  }, [user?.accessToken, syncFromSharePoint]);
-
-  const persist = useCallback(async (next: Asset[]) => {
-    setAssets(next);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  }, []);
+  }, [user?.accessToken]);
 
   const getAsset = useCallback(
     (id: string) => assets.find((a) => a.id === id),
-    [assets],
+    [assets]
   );
 
   const addAsset = useCallback(
     async (input: AssetInput) => {
       const now = new Date().toISOString();
-      const asset: Asset = { ...input, id: generateId(), createdAt: now, updatedAt: now };
-      const updatedList = [asset, ...assets];
-      await persist(updatedList);
+      const asset: Asset = {
+        ...input,
+        id: generateId(),
+        createdAt: now,
+        updatedAt: now,
+        _syncStatus: user?.accessToken ? "pending_create" : "synced",
+      };
 
-      // Async write-back to SharePoint via Graph API if logged in
+      const updated = [asset, ...assets.filter((a) => !a.id.startsWith("seed-"))];
+      await persistAssets(updated);
+
       if (user?.accessToken && isMsConfigured()) {
-        (async () => {
-          try {
-            const { siteId, listId } = await resolveGraphIds(user.accessToken);
-            await fetch(`${GRAPH}/sites/${siteId}/lists/${listId}/items`, {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${user.accessToken}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ fields: assetToSpFields(asset) }),
-            });
-          } catch (err) {
-            console.warn("Failed to write new asset to SharePoint:", err);
-          }
-        })();
+        await enqueueMutation("create", asset);
+        flushQueue();
       }
 
       return asset;
     },
-    [assets, persist, user?.accessToken, resolveGraphIds],
+    [assets, persistAssets, user?.accessToken, enqueueMutation, flushQueue]
   );
 
   const updateAsset = useCallback(
     async (id: string, input: AssetInput) => {
       const existing = assets.find((a) => a.id === id);
       if (!existing) return undefined;
-      const updated: Asset = { ...existing, ...input, updatedAt: new Date().toISOString() };
-      await persist(assets.map((a) => (a.id === id ? updated : a)));
 
-      // Async write-back to SharePoint via Graph API if logged in
+      const updatedAsset: Asset = {
+        ...existing,
+        ...input,
+        updatedAt: new Date().toISOString(),
+        _syncStatus: user?.accessToken ? "pending_update" : "synced",
+      };
+
+      const updatedList = assets.map((a) => (a.id === id ? updatedAsset : a));
+      await persistAssets(updatedList);
+
       if (user?.accessToken && isMsConfigured()) {
-        (async () => {
-          try {
-            const { siteId, listId } = await resolveGraphIds(user.accessToken);
-            // Search for item by AssetId field
-            const findUrl = `${GRAPH}/sites/${siteId}/lists/${listId}/items?expand=fields&$filter=fields/AssetId eq '${id}'`;
-            const findRes = await fetch(findUrl, {
-              headers: { Authorization: `Bearer ${user.accessToken}` },
-            });
-            if (findRes.ok) {
-              const findData = await findRes.json();
-              const spItemId = findData.value?.[0]?.id;
-              if (spItemId) {
-                await fetch(`${GRAPH}/sites/${siteId}/lists/${listId}/items/${spItemId}/fields`, {
-                  method: "PATCH",
-                  headers: {
-                    Authorization: `Bearer ${user.accessToken}`,
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify(assetToSpFields(updated)),
-                });
-              }
-            }
-          } catch (err) {
-            console.warn("Failed to update asset in SharePoint:", err);
-          }
-        })();
+        await enqueueMutation("update", updatedAsset);
+        flushQueue();
       }
 
-      return updated;
+      return updatedAsset;
     },
-    [assets, persist, user?.accessToken, resolveGraphIds],
+    [assets, persistAssets, user?.accessToken, enqueueMutation, flushQueue]
   );
 
   const deleteAsset = useCallback(
     async (id: string) => {
-      await persist(assets.filter((a) => a.id !== id));
+      const existing = assets.find((a) => a.id === id);
+      const updatedList = assets.filter((a) => a.id !== id);
+      await persistAssets(updatedList);
 
-      if (user?.accessToken && isMsConfigured()) {
-        (async () => {
-          try {
-            const { siteId, listId } = await resolveGraphIds(user.accessToken);
-            const findUrl = `${GRAPH}/sites/${siteId}/lists/${listId}/items?expand=fields&$filter=fields/AssetId eq '${id}'`;
-            const findRes = await fetch(findUrl, {
-              headers: { Authorization: `Bearer ${user.accessToken}` },
-            });
-            if (findRes.ok) {
-              const findData = await findRes.json();
-              const spItemId = findData.value?.[0]?.id;
-              if (spItemId) {
-                await fetch(`${GRAPH}/sites/${siteId}/lists/${listId}/items/${spItemId}`, {
-                  method: "DELETE",
-                  headers: { Authorization: `Bearer ${user.accessToken}` },
-                });
-              }
-            }
-          } catch (err) {
-            console.warn("Failed to delete asset from SharePoint:", err);
-          }
-        })();
+      if (existing && user?.accessToken && isMsConfigured()) {
+        await enqueueMutation("delete", existing);
+        flushQueue();
       }
     },
-    [assets, persist, user?.accessToken, resolveGraphIds],
+    [assets, persistAssets, user?.accessToken, enqueueMutation, flushQueue]
   );
 
   const clearAll = useCallback(async () => {
-    await persist([]);
-  }, [persist]);
+    await persistAssets([]);
+    await persistQueue([]);
+  }, [persistAssets, persistQueue]);
 
   const loadSamples = useCallback(async () => {
-    await persist(SAMPLE_ASSETS);
-  }, [persist]);
+    await persistAssets(SAMPLE_ASSETS);
+  }, [persistAssets]);
 
   const value = useMemo<AssetContextValue>(
     () => ({
@@ -403,6 +549,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       loaded,
       syncing,
       syncError,
+      pendingSyncCount: queue.length,
       getAsset,
       addAsset,
       updateAsset,
@@ -410,12 +557,14 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       clearAll,
       loadSamples,
       syncFromSharePoint,
+      flushQueue,
     }),
     [
       assets,
       loaded,
       syncing,
       syncError,
+      queue.length,
       getAsset,
       addAsset,
       updateAsset,
@@ -423,7 +572,8 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       clearAll,
       loadSamples,
       syncFromSharePoint,
-    ],
+      flushQueue,
+    ]
   );
 
   return <AssetContext.Provider value={value}>{children}</AssetContext.Provider>;
