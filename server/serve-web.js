@@ -1,11 +1,12 @@
 /**
- * Production web server for ENCALM Asset Tracker on Render / Docker.
- * Includes dedicated health endpoints, brand favicon handlers, and robust SPA fallback.
+ * Production web server and SharePoint API backend for ENCALM Asset Tracker.
+ * Serves Expo Web static bundle and provides integrated /api/assets REST endpoints.
  */
 
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const sharepointApi = require("./sharepoint-api");
 
 const STATIC_ROOT = path.resolve(
   __dirname,
@@ -57,23 +58,114 @@ function safeFilePath(requestPath) {
   return filePath.startsWith(STATIC_ROOT) ? filePath : null;
 }
 
-const server = http.createServer((req, res) => {
+function parseBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch (err) {
+        reject(new Error("Invalid JSON body"));
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+function sendJson(res, statusCode, data) {
+  res.writeHead(statusCode, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  });
+  res.end(JSON.stringify(data));
+}
+
+function extractUserToken(req) {
+  const auth = req.headers["authorization"] || "";
+  if (auth.startsWith("Bearer ")) {
+    return auth.slice(7).trim();
+  }
+  return null;
+}
+
+const server = http.createServer(async (req, res) => {
   try {
     const cleanUrl = (req.url || "/").split("?")[0];
+    const method = req.method.toUpperCase();
 
-    // 1. Instant 200 OK for health check endpoints (Render / AWS / K8s)
+    // 0. Handle CORS preflight
+    if (method === "OPTIONS") {
+      res.writeHead(204, {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      });
+      res.end();
+      return;
+    }
+
+    // 1. Health checks
     if (
       cleanUrl === "/health" ||
       cleanUrl === "/healthz" ||
       cleanUrl === "/ping" ||
-      cleanUrl === "/status"
+      cleanUrl === "/status" ||
+      cleanUrl === "/api/health"
     ) {
-      res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
-      res.end("OK");
+      sendJson(res, 200, {
+        status: "healthy",
+        service: "encalm-asset-tracker",
+        timestamp: Date.now(),
+      });
       return;
     }
 
-    // 2. Direct Encalm favicon handlers
+    // 2. BACKEND API: /api/assets
+    if (cleanUrl.startsWith("/api/assets")) {
+      const userToken = extractUserToken(req);
+      const parts = cleanUrl.split("/").filter(Boolean); // ['api', 'assets', ':id']
+      const assetId = parts[2] || null;
+
+      try {
+        if (method === "GET" && !assetId) {
+          const assets = await sharepointApi.fetchAllAssets(userToken);
+          sendJson(res, 200, { data: assets, count: assets.length });
+          return;
+        }
+
+        if (method === "POST" && !assetId) {
+          const body = await parseBody(req);
+          const created = await sharepointApi.createAsset(userToken, body);
+          sendJson(res, 201, { data: created });
+          return;
+        }
+
+        if (method === "PATCH" && assetId) {
+          const body = await parseBody(req);
+          const updated = await sharepointApi.updateAsset(userToken, assetId, body);
+          sendJson(res, 200, { data: updated });
+          return;
+        }
+
+        if (method === "DELETE" && assetId) {
+          await sharepointApi.deleteAsset(userToken, assetId);
+          sendJson(res, 200, { success: true });
+          return;
+        }
+
+        sendJson(res, 405, { error: `Method ${method} not allowed on ${cleanUrl}` });
+        return;
+      } catch (apiErr) {
+        console.error(`API Error on ${method} ${cleanUrl}:`, apiErr.message);
+        sendJson(res, 500, { error: apiErr.message || "SharePoint API Error" });
+        return;
+      }
+    }
+
+    // 3. Direct Favicon handlers
     if (cleanUrl === "/favicon.ico") {
       const favIco = path.join(STATIC_ROOT, "favicon.ico");
       if (sendFile(favIco, res)) return;
@@ -87,25 +179,25 @@ const server = http.createServer((req, res) => {
       if (sendFile(brandPng, res)) return;
     }
 
-    // 3. Serve static asset if requested file exists
+    // 4. Static frontend asset files
     const requestedFile = safeFilePath(req.url || "/");
     if (requestedFile && sendFile(requestedFile, res)) {
       return;
     }
 
-    // 4. SPA Fallback: root index.html
+    // 5. SPA Fallback: root index.html
     const indexFile = path.join(STATIC_ROOT, "index.html");
     if (sendFile(indexFile, res)) {
       return;
     }
 
-    // 5. Fallback: login.html
+    // 6. SPA Fallback: login.html
     const loginFile = path.join(STATIC_ROOT, "login.html");
     if (sendFile(loginFile, res)) {
       return;
     }
 
-    // 6. Fallback: any available html file in static root
+    // 7. Fallback: any available html file
     if (fs.existsSync(STATIC_ROOT)) {
       const files = fs.readdirSync(STATIC_ROOT).filter((f) => f.endsWith(".html"));
       if (files.length > 0 && sendFile(path.join(STATIC_ROOT, files[0]), res)) {
@@ -113,18 +205,18 @@ const server = http.createServer((req, res) => {
       }
     }
 
-    // 7. Safe 200 OK fallback HTML so health check never times out
+    // 8. Safe 200 OK fallback HTML
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     res.end(
       "<!DOCTYPE html><html><head><title>ENCALM Asset Tracker</title><link rel='icon' href='/favicon.ico'></head><body><h1>ENCALM Asset Tracker</h1><p>Starting up...</p></body></html>"
     );
   } catch (error) {
-    console.error("Request handling error:", error);
+    console.error("Unhandled server error:", error);
     res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
     res.end("Internal Server Error");
   }
 });
 
 server.listen(port, "0.0.0.0", () => {
-  console.log(`Serving Expo web build from ${STATIC_ROOT} on port ${port}`);
+  console.log(`ENCALM Web & API Server running on port ${port} (static: ${STATIC_ROOT})`);
 });

@@ -11,6 +11,7 @@ import React, {
 
 import { useAuth } from "@/contexts/AuthContext";
 import { isMsConfigured } from "@/lib/msConfig";
+import { apiFetchAll, apiCreateAsset, apiUpdateAsset, apiDeleteAsset } from "@/lib/api";
 import { createSharePointService, type SharePointService } from "@/lib/sharepoint";
 import type { Asset, AssetInput } from "@/types/asset";
 
@@ -213,8 +214,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
     setSyncError(null);
 
     try {
-      const sp = await getSpService(user.accessToken);
-      const serverItems = await sp.fetchAll();
+      const serverItems = await apiFetchAll(user.accessToken);
 
       setAssets(serverItems);
       const now = Date.now();
@@ -227,7 +227,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setSyncing(false);
     }
-  }, [user?.accessToken, user?.isDemo, getSpService, updateCache]);
+  }, [user?.accessToken, user?.isDemo, updateCache]);
 
   // Revalidate when user state changes
   useEffect(() => {
@@ -267,7 +267,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         return demoAsset;
       }
 
-      if (!user?.accessToken || !isMsConfigured()) {
+      if (!user?.accessToken && !isMsConfigured()) {
         throw new Error(
           "Must be signed in to corporate Microsoft 365 or Demo Mode to create assets."
         );
@@ -277,8 +277,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       setSyncError(null);
 
       try {
-        const sp = await getSpService(user.accessToken);
-        const createdAsset = await sp.create(input);
+        const createdAsset = await apiCreateAsset(input, user?.accessToken);
 
         const next = [createdAsset, ...assets];
         setAssets(next);
@@ -292,7 +291,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         setSyncing(false);
       }
     },
-    [user?.accessToken, user?.isDemo, assets, getSpService, updateCache]
+    [user?.accessToken, user?.isDemo, assets, updateCache]
   );
 
   // Update asset (supports both Live SharePoint and Demo Sandbox)
@@ -317,7 +316,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         return updated;
       }
 
-      if (!user?.accessToken || !isMsConfigured()) {
+      if (!user?.accessToken && !isMsConfigured()) {
         throw new Error(
           "Must be signed in to corporate Microsoft 365 or Demo Mode to update assets."
         );
@@ -332,21 +331,11 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       setSyncError(null);
 
       try {
-        const sp = await getSpService(user.accessToken);
-
-        let targetSpId = existing.spItemId;
-        if (!targetSpId) {
-          targetSpId = (await sp.findItemIdByAssetId(existing.id)) || undefined;
-        }
-
-        if (!targetSpId) {
-          throw new Error("Unable to locate asset record in SharePoint.");
-        }
-
-        const confirmedUpdated = await sp.update(targetSpId, input);
+        const targetId = existing.spItemId || existing.id;
+        const confirmedUpdated = await apiUpdateAsset(targetId, input, user?.accessToken);
 
         const next = assets.map((a) =>
-          a.id === id || a.spItemId === targetSpId ? confirmedUpdated : a
+          a.id === id || a.spItemId === id || a.spItemId === targetId ? confirmedUpdated : a
         );
         setAssets(next);
         await updateCache(next);
@@ -359,7 +348,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         setSyncing(false);
       }
     },
-    [user?.accessToken, user?.isDemo, assets, getSpService, updateCache]
+    [user?.accessToken, user?.isDemo, assets, updateCache]
   );
 
   // Delete asset (supports both Live SharePoint and Demo Sandbox)
@@ -373,7 +362,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      if (!user?.accessToken || !isMsConfigured()) {
+      if (!user?.accessToken && !isMsConfigured()) {
         throw new Error(
           "Must be signed in to corporate Microsoft 365 or Demo Mode to delete assets."
         );
@@ -386,18 +375,10 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       setSyncError(null);
 
       try {
-        const sp = await getSpService(user.accessToken);
+        const targetId = existing.spItemId || existing.id;
+        await apiDeleteAsset(targetId, user?.accessToken);
 
-        let targetSpId = existing.spItemId;
-        if (!targetSpId) {
-          targetSpId = (await sp.findItemIdByAssetId(existing.id)) || undefined;
-        }
-
-        if (targetSpId) {
-          await sp.remove(targetSpId);
-        }
-
-        const next = assets.filter((a) => a.id !== id && a.spItemId !== targetSpId);
+        const next = assets.filter((a) => a.id !== id && a.spItemId !== targetId);
         setAssets(next);
         await updateCache(next);
       } catch (err: any) {
@@ -408,7 +389,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         setSyncing(false);
       }
     },
-    [user?.accessToken, user?.isDemo, assets, getSpService, updateCache]
+    [user?.accessToken, user?.isDemo, assets, updateCache]
   );
 
   const value = useMemo<AssetContextValue>(

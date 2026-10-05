@@ -57,7 +57,7 @@ ENV PORT=10000
 ENV STATIC_DIR=web-build
 
 # Copy server and static build
-COPY server/serve-web.js ./server/
+COPY server ./server
 COPY --from=builder /app/web-build ./web-build
 
 EXPOSE 10000
