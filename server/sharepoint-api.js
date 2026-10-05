@@ -388,10 +388,96 @@ async function deleteAsset(userToken, id) {
   return { success: true };
 }
 
+/**
+ * Exchange PKCE authorization code for access and refresh tokens.
+ */
+async function exchangeAuthCode({ code, codeVerifier, redirectUri }) {
+  const postData = new URLSearchParams({
+    client_id: CLIENT_ID,
+    grant_type: "authorization_code",
+    code: code,
+    redirect_uri: redirectUri,
+    code_verifier: codeVerifier,
+  });
+
+  if (CLIENT_SECRET) {
+    postData.append("client_secret", CLIENT_SECRET);
+  }
+
+  const payload = postData.toString();
+
+  const res = await request(
+    {
+      hostname: "login.microsoftonline.com",
+      path: `/${TENANT_ID}/oauth2/v2.0/token`,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Content-Length": Buffer.byteLength(payload),
+      },
+      timeout: 15000,
+    },
+    payload
+  );
+
+  if (res.status !== 200) {
+    const errMsg =
+      res.data && res.data.error_description
+        ? res.data.error_description
+        : "Code exchange failed";
+    throw new Error(`Token exchange failed (${res.status}): ${errMsg}`);
+  }
+
+  return res.data;
+}
+
+/**
+ * Silently refresh tokens using OAuth refresh_token grant.
+ */
+async function refreshAuthToken({ refreshToken }) {
+  const postData = new URLSearchParams({
+    client_id: CLIENT_ID,
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+  });
+
+  if (CLIENT_SECRET) {
+    postData.append("client_secret", CLIENT_SECRET);
+  }
+
+  const payload = postData.toString();
+
+  const res = await request(
+    {
+      hostname: "login.microsoftonline.com",
+      path: `/${TENANT_ID}/oauth2/v2.0/token`,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Content-Length": Buffer.byteLength(payload),
+      },
+      timeout: 15000,
+    },
+    payload
+  );
+
+  if (res.status !== 200) {
+    const errMsg =
+      res.data && res.data.error_description
+        ? res.data.error_description
+        : "Token refresh failed";
+    throw new Error(`Token refresh failed (${res.status}): ${errMsg}`);
+  }
+
+  return res.data;
+}
+
 module.exports = {
   fetchAllAssets,
   createAsset,
   updateAsset,
   deleteAsset,
+  exchangeAuthCode,
+  refreshAuthToken,
   getAppToken,
 };

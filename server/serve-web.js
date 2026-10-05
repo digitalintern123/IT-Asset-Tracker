@@ -123,7 +123,33 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // 2. BACKEND API: /api/assets
+    // 2. BACKEND AUTH API: /api/auth/token & /api/auth/refresh
+    if (cleanUrl.startsWith("/api/auth")) {
+      try {
+        if (cleanUrl === "/api/auth/token" && method === "POST") {
+          const body = await parseBody(req);
+          const tokens = await sharepointApi.exchangeAuthCode(body);
+          sendJson(res, 200, tokens);
+          return;
+        }
+
+        if (cleanUrl === "/api/auth/refresh" && method === "POST") {
+          const body = await parseBody(req);
+          const tokens = await sharepointApi.refreshAuthToken(body);
+          sendJson(res, 200, tokens);
+          return;
+        }
+
+        sendJson(res, 404, { error: `Endpoint not found: ${cleanUrl}` });
+        return;
+      } catch (authErr) {
+        console.error(`Auth API Error on ${method} ${cleanUrl}:`, authErr.message);
+        sendJson(res, 400, { error: authErr.message || "Auth exchange error" });
+        return;
+      }
+    }
+
+    // 3. BACKEND API: /api/assets
     if (cleanUrl.startsWith("/api/assets")) {
       const userToken = extractUserToken(req);
       const parts = cleanUrl.split("/").filter(Boolean); // ['api', 'assets', ':id']

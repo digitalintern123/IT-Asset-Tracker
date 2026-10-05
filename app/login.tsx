@@ -31,6 +31,18 @@ export default function LoginScreen() {
     if (user) router.replace("/");
   }, [user]);
 
+  // If returning from Microsoft PKCE redirect, show loading state
+  React.useEffect(() => {
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      if (
+        window.location.search.includes("code=") ||
+        (window.location.hash && window.location.hash.includes("code="))
+      ) {
+        setBusy(true);
+      }
+    }
+  }, []);
+
   const handleSignIn = async () => {
     setError(null);
     setBusy(true);

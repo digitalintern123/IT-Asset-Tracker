@@ -21,13 +21,15 @@ export const MS_CONFIG = {
     "Mail.Send",
   ],
 
-  // Scopes used for OAuth 2.0 Implicit Flow on web (offline_access is disallowed for implicit response_type=token)
+  // Standard scopes used for OAuth 2.0 PKCE flow on both Web and Native
   WEB_SCOPES: [
     "openid",
     "profile",
     "email",
-    "User.Read",
+    "offline_access",
     "Sites.ReadWrite.All",
+    "User.Read",
+    "Mail.Send",
   ],
 } as const;
 
