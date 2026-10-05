@@ -18,6 +18,9 @@ COPY . .
 ENV NODE_ENV=production
 RUN npx expo export -p web --output-dir web-build --clear
 
+# Ensure index.html exists in web-build
+RUN if [ ! -f web-build/index.html ]; then cp web-build/login.html web-build/index.html 2>/dev/null || true; fi
+
 # Copy font assets into web-build/fonts/
 RUN mkdir -p web-build/fonts && cp fonts/*.ttf web-build/fonts/
 
@@ -54,5 +57,8 @@ COPY server/serve-web.js ./server/
 COPY --from=builder /app/web-build ./web-build
 
 EXPOSE 10000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:10000/health || exit 1
 
 CMD ["node", "server/serve-web.js"]
