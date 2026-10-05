@@ -31,19 +31,18 @@ export function BrandHeader({ kicker, title, subtitle, right }: Props) {
       ]}
     >
       <View style={styles.brandRow}>
-        <View style={styles.logoWrap}>
-          <Image
-            source={require("@/assets/brand/encalm-logo.png")}
-            style={styles.logo}
-            resizeMode="contain"
-          />
-        </View>
+        <Image
+          source={require("@/assets/brand/encalm-logo-white.png")}
+          style={styles.logo}
+          resizeMode="contain"
+        />
+        <View style={styles.headerDivider} />
         <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10 }}>
           <View>
-            <Text style={styles.brandName}>ENCALM</Text>
             <Text style={[styles.brandTag, { color: colors.brandGoldSoft }]}>
-              Asset Tracker
+              ASSET TRACKER
             </Text>
+            <Text style={styles.brandSub}>Hospitality Operations</Text>
           </View>
           {user?.isDemo ? (
             <View style={styles.demoBadge}>
@@ -81,34 +80,29 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    marginBottom: 18,
-  },
-  logoWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: "#FFFFFF",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: "rgba(205,164,94,0.6)",
+    marginBottom: 16,
   },
   logo: {
-    width: 26,
-    height: 26,
+    width: 52,
+    height: 42,
   },
-  brandName: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 4,
+  headerDivider: {
+    width: 1,
+    height: 26,
+    backgroundColor: "rgba(205, 164, 94, 0.4)",
   },
   brandTag: {
-    fontSize: 11,
-    fontFamily: "Inter_500Medium",
-    letterSpacing: 1.4,
-    marginTop: 1,
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 2,
     textTransform: "uppercase",
+  },
+  brandSub: {
+    fontSize: 10,
+    fontFamily: "Inter_400Regular",
+    color: "rgba(255, 255, 255, 0.65)",
+    letterSpacing: 0.5,
+    marginTop: 1,
   },
   dotMark: {
     width: 8,

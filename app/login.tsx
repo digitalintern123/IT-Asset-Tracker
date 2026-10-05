@@ -92,15 +92,12 @@ export default function LoginScreen() {
         <View style={styles.contentWrap}>
           {/* Centered Hero Brand Section */}
           <View style={styles.heroSection}>
-            <View style={styles.logoFrame}>
-              <Image
-                source={require("@/assets/brand/encalm-logo.png")}
-                style={styles.heroLogo}
-                resizeMode="contain"
-              />
-            </View>
-
-            <Text style={styles.brandTitle}>ENCALM HOSPITALITY</Text>
+            <Image
+              source={require("@/assets/brand/encalm-logo-white.png")}
+              style={styles.heroLogo}
+              resizeMode="contain"
+            />
+            <Text style={styles.brandTitle}>HOSPITALITY</Text>
             <View style={styles.goldBadge}>
               <Text style={styles.goldBadgeText}>IT ASSET REGISTER</Text>
             </View>
@@ -220,33 +217,20 @@ const styles = StyleSheet.create({
   },
   heroSection: {
     alignItems: "center",
-    marginBottom: 28,
-  },
-  logoFrame: {
-    width: 104,
-    height: 104,
-    borderRadius: 24,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 2,
-    borderColor: "rgba(205, 164, 94, 0.7)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 18,
-    shadowColor: "#CDA45E",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 18,
+    marginBottom: 24,
   },
   heroLogo: {
-    width: 76,
-    height: 62,
+    width: 140,
+    height: 112,
+    marginBottom: 4,
   },
   brandTitle: {
-    color: "#FFFFFF",
-    fontSize: 20,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 4,
+    color: "#CDA45E",
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 6,
     textAlign: "center",
+    textTransform: "uppercase",
   },
   goldBadge: {
     marginTop: 8,
