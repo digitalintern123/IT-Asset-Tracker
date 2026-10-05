@@ -23,12 +23,14 @@ export interface AuthUser {
   initials: string;
   accessToken?: string;
   expiresAt?: number;
+  isDemo?: boolean;
 }
 
 interface AuthContextValue {
   user: AuthUser | null;
   loaded: boolean;
   signIn: (email?: string, name?: string) => Promise<void>;
+  signInDemo: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -175,19 +177,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
   }, []);
 
+  const signInDemo = useCallback(async () => {
+    const demoUser: AuthUser = {
+      email: "demo@encalmhospitality.com",
+      name: "Encalm Demo Inspector",
+      initials: "ED",
+      isDemo: true,
+    };
+    setUser(demoUser);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(demoUser));
+  }, []);
+
   const signOut = useCallback(async () => {
+    const wasDemo = user?.isDemo;
     setUser(null);
     await AsyncStorage.removeItem(STORAGE_KEY);
-    if (Platform.OS === "web" && typeof window !== "undefined") {
+    if (!wasDemo && Platform.OS === "web" && typeof window !== "undefined") {
       window.location.href =
         `https://login.microsoftonline.com/${MS_CONFIG.TENANT_ID}/oauth2/v2.0/logout` +
         `?post_logout_redirect_uri=${encodeURIComponent(window.location.origin + "/")}`;
     }
-  }, []);
+  }, [user]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, loaded, signIn, signOut }),
-    [user, loaded, signIn, signOut],
+    () => ({ user, loaded, signIn, signInDemo, signOut }),
+    [user, loaded, signIn, signInDemo, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

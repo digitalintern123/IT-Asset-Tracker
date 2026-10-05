@@ -120,12 +120,18 @@ export default function SettingsScreen() {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={[styles.summaryTitle, { color: colors.foreground }]}>
-            {user ? "SharePoint Online Database" : "Demo Mode"}
+            {user?.isDemo
+              ? "Demo Sandbox (Local)"
+              : user
+              ? "SharePoint Online Database"
+              : "Demo Mode"}
           </Text>
           <Text
             style={[styles.summarySub, { color: colors.mutedForeground }]}
           >
-            {user
+            {user?.isDemo
+              ? `${assets.length} sample assets · Local sandbox mode`
+              : user
               ? `${assets.length} corporate assets connected to encalmit.sharepoint.com`
               : "Sign in with Microsoft 365 to load corporate assets"}
           </Text>
@@ -136,10 +142,18 @@ export default function SettingsScreen() {
         <Row
           icon="cloud"
           label="Microsoft SharePoint Online"
-          sublabel={user ? "Site: encalmit.sharepoint.com · List: IT Asset Register" : "Sign in to connect"}
+          sublabel={
+            user?.isDemo
+              ? "Demo sandbox (No corporate records modified)"
+              : user
+              ? "Site: encalmit.sharepoint.com · List: IT Asset Register"
+              : "Sign in to connect"
+          }
           colors={colors}
           onPress={() => {
-            if (user) {
+            if (user?.isDemo) {
+              Alert.alert("Demo Sandbox", "You are in Demo Mode. Assets are simulated locally and not synced to corporate SharePoint.");
+            } else if (user) {
               refresh();
             } else {
               Alert.alert("Sign In Required", "Please sign in with your corporate Microsoft 365 account to access SharePoint.");
@@ -149,16 +163,16 @@ export default function SettingsScreen() {
             <View
               style={[
                 styles.statusPill,
-                { backgroundColor: user ? "#E6F4EA" : colors.muted },
+                { backgroundColor: user?.isDemo ? "#FFF3E0" : user ? "#E6F4EA" : colors.muted },
               ]}
             >
               <Text
                 style={[
                   styles.statusPillText,
-                  { color: user ? "#137333" : colors.mutedForeground },
+                  { color: user?.isDemo ? "#E65100" : user ? "#137333" : colors.mutedForeground },
                 ]}
               >
-                {user ? "Connected" : "Disconnected"}
+                {user?.isDemo ? "Simulated" : user ? "Connected" : "Disconnected"}
               </Text>
             </View>
           }
@@ -166,26 +180,42 @@ export default function SettingsScreen() {
         <Row
           icon="shield"
           label="Microsoft Azure AD (Entra ID)"
-          sublabel={user ? `Signed in as ${user.email}` : "Single sign-on ready"}
+          sublabel={
+            user?.isDemo
+              ? "Demo session · demo@encalmhospitality.com"
+              : user
+              ? `Signed in as ${user.email}`
+              : "Single sign-on ready"
+          }
           colors={colors}
           right={
             <View
               style={[
                 styles.statusPill,
-                { backgroundColor: user ? "#E6F4EA" : colors.muted },
+                { backgroundColor: user?.isDemo ? "#FFF3E0" : user ? "#E6F4EA" : colors.muted },
               ]}
             >
               <Text
                 style={[
                   styles.statusPillText,
-                  { color: user ? "#137333" : colors.mutedForeground },
+                  { color: user?.isDemo ? "#E65100" : user ? "#137333" : colors.mutedForeground },
                 ]}
               >
-                {user ? "Active" : "Signed Out"}
+                {user?.isDemo ? "Demo" : user ? "Active" : "Signed Out"}
               </Text>
             </View>
           }
         />
+        {user?.isDemo ? (
+          <Row
+            icon="log-in"
+            label="Connect Corporate Microsoft 365"
+            sublabel="Sign in to access real Encalm SharePoint inventory"
+            colors={colors}
+            onPress={() => signOut()}
+            right={<Feather name="chevron-right" size={16} color={colors.primary} />}
+          />
+        ) : null}
         {user ? (
           <Row
             icon="refresh-cw"

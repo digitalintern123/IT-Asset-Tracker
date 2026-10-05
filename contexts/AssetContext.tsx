@@ -21,56 +21,107 @@ interface CachePayload {
   items: Asset[];
 }
 
-const DEMO_SAMPLE_ASSETS: Asset[] = [
+export const DEMO_SAMPLE_ASSETS: Asset[] = [
   {
     id: "demo-1",
     spItemId: "1",
-    name: 'MacBook Pro 16"',
-    category: "Laptop",
-    serialNumber: "C02XJ1234567",
+    name: "Encalm Prive Check-in Terminal",
+    category: "Desktop",
+    serialNumber: "ENC-DEL-T3-001",
     status: "in_use",
-    assignee: "Sarah Chen",
-    location: "HQ — Floor 3",
-    purchaseDate: "2024-03-12",
-    purchasePrice: 2499,
-    warrantyExpiry: "2027-03-12",
-    notes: "Engineering primary workstation.",
-    createdAt: new Date("2024-03-12").toISOString(),
-    updatedAt: new Date("2024-03-12").toISOString(),
+    assignee: "Rajesh Kumar (Duty Mgr)",
+    location: "DEL T3 — Prive Lounge Reception",
+    purchaseDate: "2024-01-15",
+    purchasePrice: 1450,
+    warrantyExpiry: "2027-01-15",
+    notes: "Primary guest check-in terminal with passport/boarding pass reader.",
+    createdAt: new Date("2024-01-15").toISOString(),
+    updatedAt: new Date("2024-01-15").toISOString(),
     _syncStatus: "synced",
   },
   {
     id: "demo-2",
     spItemId: "2",
-    name: "Dell UltraSharp 27",
-    category: "Monitor",
-    serialNumber: "CN-0H5JK4-987",
-    status: "available",
-    assignee: "",
-    location: "IT Storage — B2",
-    purchaseDate: "2023-11-04",
-    purchasePrice: 549,
-    warrantyExpiry: "2026-11-04",
-    notes: "",
-    createdAt: new Date("2023-11-04").toISOString(),
-    updatedAt: new Date("2023-11-04").toISOString(),
+    name: "Encalm Spa Reception iPad Pro",
+    category: "Tablet",
+    serialNumber: "ENC-SPA-IPAD-04",
+    status: "in_use",
+    assignee: "Priya Sharma (Spa Lead)",
+    location: "DEL T3 — Wellness Spa",
+    purchaseDate: "2024-03-10",
+    purchasePrice: 1199,
+    warrantyExpiry: "2026-03-10",
+    notes: "Spa booking and treatment scheduling tablet.",
+    createdAt: new Date("2024-03-10").toISOString(),
+    updatedAt: new Date("2024-03-10").toISOString(),
     _syncStatus: "synced",
   },
   {
     id: "demo-3",
     spItemId: "3",
-    name: "iPhone 15 Pro",
-    category: "Phone",
-    serialNumber: "F2LXC9PQRS",
+    name: 'Flight Info Display 55" 4K',
+    category: "Monitor",
+    serialNumber: "FIDS-HYD-55-09",
     status: "in_use",
-    assignee: "Marcus Wong",
-    location: "Remote — NY",
-    purchaseDate: "2024-09-22",
-    purchasePrice: 1199,
-    warrantyExpiry: "2025-09-22",
-    notes: "Sales team device.",
-    createdAt: new Date("2024-09-22").toISOString(),
-    updatedAt: new Date("2024-09-22").toISOString(),
+    assignee: "IT Lounge Operations",
+    location: "HYD — International Lounge Area A",
+    purchaseDate: "2023-11-20",
+    purchasePrice: 1850,
+    warrantyExpiry: "2026-11-20",
+    notes: "Live departure flight information display.",
+    createdAt: new Date("2023-11-20").toISOString(),
+    updatedAt: new Date("2023-11-20").toISOString(),
+    _syncStatus: "synced",
+  },
+  {
+    id: "demo-4",
+    spItemId: "4",
+    name: "IT Operations ThinkPad T14",
+    category: "Laptop",
+    serialNumber: "PF-4K992-DEL",
+    status: "in_use",
+    assignee: "Amit Patel (Network Admin)",
+    location: "DEL T3 — IT Server Room",
+    purchaseDate: "2024-02-05",
+    purchasePrice: 1650,
+    warrantyExpiry: "2027-02-05",
+    notes: "Lounge network monitoring and Wi-Fi controller administration.",
+    createdAt: new Date("2024-02-05").toISOString(),
+    updatedAt: new Date("2024-02-05").toISOString(),
+    _syncStatus: "synced",
+  },
+  {
+    id: "demo-5",
+    spItemId: "5",
+    name: "Bar Inventory Barcode Scanner",
+    category: "Equipment",
+    serialNumber: "ZEB-DS2208-GOA",
+    status: "available",
+    assignee: "",
+    location: "GOA — Lounge IT Store",
+    purchaseDate: "2024-04-12",
+    purchasePrice: 320,
+    warrantyExpiry: "2026-04-12",
+    notes: "Zebra handheld barcode scanner for beverage stocktaking.",
+    createdAt: new Date("2024-04-12").toISOString(),
+    updatedAt: new Date("2024-04-12").toISOString(),
+    _syncStatus: "synced",
+  },
+  {
+    id: "demo-6",
+    spItemId: "6",
+    name: "Concierge iPhone 15",
+    category: "Phone",
+    serialNumber: "APL-IP15-HYD02",
+    status: "maintenance",
+    assignee: "Service Desk HYD",
+    location: "HYD — Lounge Concierge",
+    purchaseDate: "2024-05-18",
+    purchasePrice: 999,
+    warrantyExpiry: "2025-05-18",
+    notes: "VIP guest assistance hotline handset. Scheduled for battery check.",
+    createdAt: new Date("2024-05-18").toISOString(),
+    updatedAt: new Date("2024-05-18").toISOString(),
     _syncStatus: "synced",
   },
 ];
@@ -130,20 +181,30 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
           const payload = JSON.parse(raw) as CachePayload;
           setAssets(payload.items || []);
           setLastSyncedAt(payload.lastFetched || null);
-        } else if (!user) {
-          // If no user and no cache, show demo sample assets
+        } else {
           setAssets(DEMO_SAMPLE_ASSETS);
         }
       } catch {
-        if (!user) setAssets(DEMO_SAMPLE_ASSETS);
+        setAssets(DEMO_SAMPLE_ASSETS);
       } finally {
         setLoaded(true);
       }
     })();
-  }, [user]);
+  }, []);
 
-  // 2. Fetch authoritative asset data directly from SharePoint Online
+  // 2. Fetch authoritative asset data from SharePoint or refresh demo sandbox
   const refresh = useCallback(async () => {
+    // If in Demo Mode, refresh local sandbox
+    if (user?.isDemo) {
+      setSyncing(true);
+      setSyncError(null);
+      setTimeout(() => {
+        setLastSyncedAt(Date.now());
+        setSyncing(false);
+      }, 350);
+      return;
+    }
+
     if (!user?.accessToken || !isMsConfigured()) {
       return;
     }
@@ -166,29 +227,49 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setSyncing(false);
     }
-  }, [user?.accessToken, getSpService, updateCache]);
+  }, [user?.accessToken, user?.isDemo, getSpService, updateCache]);
 
-  // Revalidate from SharePoint on login or token change
+  // Revalidate when user state changes
   useEffect(() => {
-    if (user?.accessToken) {
+    if (user?.accessToken && !user?.isDemo) {
       refresh();
+    } else if (user?.isDemo) {
+      spServiceRef.current = null;
+      setLastSyncedAt(Date.now());
+      setAssets((prev) => (prev.length > 0 ? prev : DEMO_SAMPLE_ASSETS));
     } else {
       spServiceRef.current = null;
       setAssets(DEMO_SAMPLE_ASSETS);
     }
-  }, [user?.accessToken, refresh]);
+  }, [user?.accessToken, user?.isDemo, refresh]);
 
   const getAsset = useCallback(
     (id: string) => assets.find((a) => a.id === id || a.spItemId === id),
     [assets]
   );
 
-  // DIRECT PRODUCTION MUTATION: Create asset on SharePoint
+  // Create asset (supports both Live SharePoint and Demo Sandbox)
   const addAsset = useCallback(
     async (input: AssetInput): Promise<Asset> => {
+      // Demo Mode: Local sandbox creation
+      if (user?.isDemo) {
+        const demoAsset: Asset = {
+          ...input,
+          id: "demo-" + Date.now().toString(36),
+          spItemId: String(assets.length + 1),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          _syncStatus: "synced",
+        };
+        const next = [demoAsset, ...assets];
+        setAssets(next);
+        await updateCache(next);
+        return demoAsset;
+      }
+
       if (!user?.accessToken || !isMsConfigured()) {
         throw new Error(
-          "Must be signed in to corporate Microsoft 365 to create assets."
+          "Must be signed in to corporate Microsoft 365 or Demo Mode to create assets."
         );
       }
 
@@ -199,7 +280,6 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         const sp = await getSpService(user.accessToken);
         const createdAsset = await sp.create(input);
 
-        // Update in-memory state and cache with confirmed SharePoint response
         const next = [createdAsset, ...assets];
         setAssets(next);
         await updateCache(next);
@@ -212,15 +292,34 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         setSyncing(false);
       }
     },
-    [user?.accessToken, assets, getSpService, updateCache]
+    [user?.accessToken, user?.isDemo, assets, getSpService, updateCache]
   );
 
-  // DIRECT PRODUCTION MUTATION: Update asset on SharePoint
+  // Update asset (supports both Live SharePoint and Demo Sandbox)
   const updateAsset = useCallback(
     async (id: string, input: AssetInput): Promise<Asset | undefined> => {
+      // Demo Mode: Local sandbox update
+      if (user?.isDemo) {
+        const existing = assets.find((a) => a.id === id || a.spItemId === id);
+        if (!existing) {
+          throw new Error(`Asset with ID "${id}" not found.`);
+        }
+        const updated: Asset = {
+          ...existing,
+          ...input,
+          updatedAt: new Date().toISOString(),
+        };
+        const next = assets.map((a) =>
+          a.id === id || a.spItemId === id ? updated : a
+        );
+        setAssets(next);
+        await updateCache(next);
+        return updated;
+      }
+
       if (!user?.accessToken || !isMsConfigured()) {
         throw new Error(
-          "Must be signed in to corporate Microsoft 365 to update assets."
+          "Must be signed in to corporate Microsoft 365 or Demo Mode to update assets."
         );
       }
 
@@ -235,7 +334,6 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       try {
         const sp = await getSpService(user.accessToken);
 
-        // Resolve SharePoint internal item ID
         let targetSpId = existing.spItemId;
         if (!targetSpId) {
           targetSpId = (await sp.findItemIdByAssetId(existing.id)) || undefined;
@@ -261,15 +359,23 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         setSyncing(false);
       }
     },
-    [user?.accessToken, assets, getSpService, updateCache]
+    [user?.accessToken, user?.isDemo, assets, getSpService, updateCache]
   );
 
-  // DIRECT PRODUCTION MUTATION: Delete asset on SharePoint
+  // Delete asset (supports both Live SharePoint and Demo Sandbox)
   const deleteAsset = useCallback(
     async (id: string): Promise<void> => {
+      // Demo Mode: Local sandbox deletion
+      if (user?.isDemo) {
+        const next = assets.filter((a) => a.id !== id && a.spItemId !== id);
+        setAssets(next);
+        await updateCache(next);
+        return;
+      }
+
       if (!user?.accessToken || !isMsConfigured()) {
         throw new Error(
-          "Must be signed in to corporate Microsoft 365 to delete assets."
+          "Must be signed in to corporate Microsoft 365 or Demo Mode to delete assets."
         );
       }
 
@@ -302,7 +408,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         setSyncing(false);
       }
     },
-    [user?.accessToken, assets, getSpService, updateCache]
+    [user?.accessToken, user?.isDemo, assets, getSpService, updateCache]
   );
 
   const value = useMemo<AssetContextValue>(
