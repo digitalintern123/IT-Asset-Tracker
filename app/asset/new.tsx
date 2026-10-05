@@ -51,6 +51,13 @@ export default function NewAssetScreen() {
               }
             }
             router.replace(`/asset/${asset.id}`);
+          } catch (err: any) {
+            const msg = err?.message || "Failed to create asset in SharePoint.";
+            if (Platform.OS === "web") {
+              window.alert(`Error: ${msg}`);
+            } else {
+              Alert.alert("Error Creating Asset", msg);
+            }
           } finally {
             setSubmitting(false);
           }

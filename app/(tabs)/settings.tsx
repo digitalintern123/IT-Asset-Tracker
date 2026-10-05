@@ -18,11 +18,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
 type FeatherIcon = React.ComponentProps<typeof Feather>["name"];
-
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { assets, clearAll, loadSamples } = useAssets();
+  const { assets, syncing, syncError, lastSyncedAt, refresh } = useAssets();
   const { user, signOut } = useAuth();
 
   const confirm = (
@@ -114,123 +113,117 @@ export default function SettingsScreen() {
         <View
           style={[
             styles.summaryIcon,
-            { backgroundColor: colors.primary + "1F" },
+            { backgroundColor: user ? colors.primary + "1F" : colors.muted },
           ]}
         >
-          <Feather name="database" size={20} color={colors.primary} />
+          <Feather name={user ? "cloud" : "database"} size={20} color={user ? colors.primary : colors.mutedForeground} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={[styles.summaryTitle, { color: colors.foreground }]}>
-            Local storage
+            {user ? "SharePoint Online Database" : "Demo Mode"}
           </Text>
           <Text
             style={[styles.summarySub, { color: colors.mutedForeground }]}
           >
-            {assets.length} assets stored on this device
+            {user
+              ? `${assets.length} corporate assets connected to encalmit.sharepoint.com`
+              : "Sign in with Microsoft 365 to load corporate assets"}
           </Text>
         </View>
       </View>
 
-      <Section title="Cloud sync" colors={colors}>
+      <Section title="Cloud Infrastructure" colors={colors}>
         <Row
           icon="cloud"
-          label="Microsoft SharePoint"
-          sublabel="Not connected"
+          label="Microsoft SharePoint Online"
+          sublabel={user ? "Site: encalmit.sharepoint.com · List: IT Asset Register" : "Sign in to connect"}
           colors={colors}
-          onPress={() =>
-            Alert.alert(
-              "SharePoint sync",
-              "Cloud sync to SharePoint will be enabled once your Azure AD app registration is configured. Provide the tenant ID, client ID, and SharePoint site URL to connect.",
-            )
-          }
+          onPress={() => {
+            if (user) {
+              refresh();
+            } else {
+              Alert.alert("Sign In Required", "Please sign in with your corporate Microsoft 365 account to access SharePoint.");
+            }
+          }}
           right={
             <View
               style={[
                 styles.statusPill,
-                { backgroundColor: colors.muted },
+                { backgroundColor: user ? "#E6F4EA" : colors.muted },
               ]}
             >
               <Text
                 style={[
                   styles.statusPillText,
-                  { color: colors.mutedForeground },
+                  { color: user ? "#137333" : colors.mutedForeground },
                 ]}
               >
-                Pending
+                {user ? "Connected" : "Disconnected"}
               </Text>
             </View>
           }
         />
         <Row
           icon="shield"
-          label="Microsoft Azure AD"
-          sublabel="Sign-in disabled"
+          label="Microsoft Azure AD (Entra ID)"
+          sublabel={user ? `Signed in as ${user.email}` : "Single sign-on ready"}
           colors={colors}
-          onPress={() =>
-            Alert.alert(
-              "Azure AD",
-              "Single sign-on with your Microsoft 365 tenant will be available after registering the app in Azure AD.",
-            )
+          right={
+            <View
+              style={[
+                styles.statusPill,
+                { backgroundColor: user ? "#E6F4EA" : colors.muted },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.statusPillText,
+                  { color: user ? "#137333" : colors.mutedForeground },
+                ]}
+              >
+                {user ? "Active" : "Signed Out"}
+              </Text>
+            </View>
           }
         />
-      </Section>
-
-      <Section title="Data" colors={colors}>
-        <Row
-          icon="refresh-cw"
-          label="Reload sample data"
-          sublabel="Replace local assets with starter examples"
-          colors={colors}
-          onPress={() =>
-            confirm(
-              "Reload sample data?",
-              "This will replace all current assets with the starter set.",
-              async () => {
-                if (Platform.OS !== "web") {
-                  Haptics.notificationAsync(
-                    Haptics.NotificationFeedbackType.Success,
-                  );
-                }
-                await loadSamples();
-              },
-            )
-          }
-        />
-        <Row
-          icon="trash-2"
-          label="Clear all assets"
-          sublabel="Remove every asset from this device"
-          colors={colors}
-          destructive
-          onPress={() =>
-            confirm(
-              "Clear all assets?",
-              "This cannot be undone.",
-              async () => {
-                if (Platform.OS !== "web") {
-                  Haptics.notificationAsync(
-                    Haptics.NotificationFeedbackType.Warning,
-                  );
-                }
-                await clearAll();
-              },
-              true,
-            )
-          }
-        />
+        {user ? (
+          <Row
+            icon="refresh-cw"
+            label="Refresh from SharePoint"
+            sublabel={
+              syncing
+                ? "Synchronizing with cloud..."
+                : lastSyncedAt
+                ? `Last synced: ${new Date(lastSyncedAt).toLocaleTimeString()}`
+                : "Tap to reload latest records"
+            }
+            colors={colors}
+            onPress={async () => {
+              if (Platform.OS !== "web") {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }
+              await refresh();
+            }}
+            right={
+              syncing ? (
+                <Text style={{ fontSize: 12, color: colors.primary }}>Syncing...</Text>
+              ) : undefined
+            }
+          />
+        ) : null}
       </Section>
 
       <Section title="About" colors={colors}>
         <Row
           icon="info"
           label="Version"
-          sublabel="1.0.0"
+          sublabel="1.0.0 (Production Cloud)"
           colors={colors}
         />
         <Row
           icon="hard-drive"
-          label="Storage"
-          sublabel="On-device (AsyncStorage)"
+          label="Database"
+          sublabel={user ? "Microsoft SharePoint Online (Live Master)" : "Demo Mode (Ephemeral Cache)"}
           colors={colors}
         />
       </Section>

@@ -67,11 +67,20 @@ export default function AssetDetailScreen() {
 
   const handleDelete = () => {
     const doDelete = async () => {
-      if (Platform.OS !== "web") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      try {
+        if (Platform.OS !== "web") {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        }
+        await deleteAsset(asset.id);
+        router.back();
+      } catch (err: any) {
+        const msg = err?.message || "Failed to delete asset from SharePoint.";
+        if (Platform.OS === "web") {
+          window.alert(`Error: ${msg}`);
+        } else {
+          Alert.alert("Delete Failed", msg);
+        }
       }
-      await deleteAsset(asset.id);
-      router.back();
     };
     if (Platform.OS === "web") {
       if (window.confirm(`Delete "${asset.name}"? This cannot be undone.`))
@@ -142,6 +151,13 @@ export default function AssetDetailScreen() {
                 }
               }
               setEditing(false);
+            } catch (err: any) {
+              const msg = err?.message || "Failed to update asset in SharePoint.";
+              if (Platform.OS === "web") {
+                window.alert(`Error: ${msg}`);
+              } else {
+                Alert.alert("Update Failed", msg);
+              }
             } finally {
               setSubmitting(false);
             }
