@@ -1,6 +1,20 @@
 /**
  * Microsoft Azure AD + SharePoint configuration.
+ * Reduced least-privilege scopes (Mail.Send eliminated).
  */
+
+const sharepointScope =
+  (typeof process !== "undefined" && process.env?.EXPO_PUBLIC_SHAREPOINT_SCOPE) ||
+  "Sites.ReadWrite.All"; // Supports "Sites.Selected" for least-privilege site-specific access
+
+const baseScopes = [
+  "openid",
+  "profile",
+  "email",
+  "offline_access",
+  "User.Read",
+  sharepointScope,
+] as const;
 
 export const MS_CONFIG = {
   ENABLED: true,
@@ -11,25 +25,18 @@ export const MS_CONFIG = {
   SHAREPOINT_SITE_URL: "https://encalmit.sharepoint.com",
   LIST_NAME: "IT Asset Register",
 
-  SCOPES: [
-    "openid",
-    "profile",
-    "email",
-    "offline_access",
-    "Sites.ReadWrite.All",
-    "User.Read",
-    "Mail.Send",
-  ],
+  // Least privilege SharePoint scope: "Sites.Selected" or "Sites.ReadWrite.All"
+  SHAREPOINT_SCOPE: sharepointScope,
 
-  // Standard scopes used for OAuth 2.0 PKCE flow on both Web and Native
-  WEB_SCOPES: [
-    "openid",
-    "profile",
-    "email",
-    "offline_access",
-    "Sites.ReadWrite.All",
-    "User.Read",
-    "Mail.Send",
+  // Minimal scopes (Mail.Send completely removed)
+  SCOPES: baseScopes,
+  WEB_SCOPES: baseScopes,
+
+  // Configured Enterprise IT Administrators (fallback if Entra ID App Roles not assigned)
+  ADMIN_EMAILS: [
+    "digital.intern@encalm.com",
+    "admin@encalmhospitality.com",
+    "it@encalmhospitality.com",
   ],
 } as const;
 

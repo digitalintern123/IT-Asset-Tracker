@@ -28,6 +28,13 @@ import {
   removeSecureTokens,
   StoredTokens,
 } from "@/lib/secureStorage";
+import {
+  UserRole,
+  RolePermissions,
+  resolveUserRole,
+  getPermissionsForRole,
+  parseJwtRoles,
+} from "@/lib/roles";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -37,6 +44,8 @@ export interface AuthUser {
   email: string;
   name: string;
   initials: string;
+  role: UserRole;
+  permissions: RolePermissions;
   accessToken?: string;
   expiresAt?: number;
   isDemo?: boolean;
@@ -49,6 +58,7 @@ interface AuthContextValue {
   signInDemo: () => Promise<void>;
   signOut: () => Promise<void>;
   getValidAccessToken: () => Promise<string | null>;
+  setDemoRole: (role: UserRole) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -128,6 +138,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const rawProfile = await AsyncStorage.getItem(PROFILE_STORAGE_KEY);
         if (rawProfile) {
           const profile = JSON.parse(rawProfile) as AuthUser;
+          // Ensure role and permissions are always synchronized
+          const role = profile.role || "technician";
+          profile.role = role;
+          profile.permissions = getPermissionsForRole(role);
 
           if (profile.isDemo) {
             setUser(profile);
@@ -154,7 +168,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined") return;
 
-    const fullUrl = window.location.href;
     const searchParams = new URLSearchParams(window.location.search);
     const hash = window.location.hash ? window.location.hash.substring(1) : "";
     const hashParams = new URLSearchParams(hash);
@@ -197,10 +210,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const name = profile.displayName || "Encalm User";
         const email = profile.email || "";
 
+        // Resolve user role from token claims & admin email list
+        const tokenRoles = parseJwtRoles(tokens.idToken);
+        const role = resolveUserRole(email, tokenRoles);
+        const permissions = getPermissionsForRole(role);
+
         const authUser: AuthUser = {
           email,
           name,
           initials: getInitials(name),
+          role,
+          permissions,
           accessToken: tokens.accessToken,
           expiresAt: tokens.expiresAt,
         };
@@ -253,10 +273,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       tokensRef.current = res.tokens;
       await setSecureTokens(res.tokens);
 
+      const tokenRoles = parseJwtRoles(res.tokens.idToken);
+      const role = resolveUserRole(res.email, tokenRoles);
+      const permissions = getPermissionsForRole(role);
+
       const authUser: AuthUser = {
         email: res.email,
         name: res.name || displayName || email || "Encalm User",
         initials: getInitials(res.name || displayName || email || "EU"),
+        role,
+        permissions,
         accessToken: res.tokens.accessToken,
         expiresAt: res.tokens.expiresAt,
       };
@@ -272,6 +298,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: "demo@encalmhospitality.com",
       name: "Encalm Demo Inspector",
       initials: "ED",
+      role: "admin",
+      permissions: getPermissionsForRole("admin"),
       isDemo: true,
     };
     tokensRef.current = null;
@@ -280,7 +308,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(demoUser));
   }, []);
 
-  // 7. Sign Out
+  // 7. Demo Role Switcher
+  const setDemoRole = useCallback((role: UserRole) => {
+    setUser((prev) => {
+      if (!prev) return null;
+      const updated: AuthUser = {
+        ...prev,
+        role,
+        permissions: getPermissionsForRole(role),
+      };
+      AsyncStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
+  }, []);
+
+  // 8. Sign Out
   const signOut = useCallback(async () => {
     const wasDemo = user?.isDemo;
     tokensRef.current = null;
@@ -303,8 +345,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInDemo,
       signOut,
       getValidAccessToken,
+      setDemoRole,
     }),
-    [user, loaded, signIn, signInDemo, signOut, getValidAccessToken]
+    [user, loaded, signIn, signInDemo, signOut, getValidAccessToken, setDemoRole]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

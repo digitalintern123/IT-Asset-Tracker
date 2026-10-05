@@ -19,6 +19,7 @@ import { BrandHeader } from "@/components/BrandHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { STATUSES, STATUS_LABELS } from "@/constants/categories";
 import { useAssets } from "@/contexts/AssetContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import type { AssetStatus } from "@/types/asset";
 
@@ -29,6 +30,7 @@ export default function AssetsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { assets, loaded } = useAssets();
+  const { user } = useAuth();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
 
@@ -83,25 +85,27 @@ export default function AssetsScreen() {
             >
               <Feather name="maximize" size={18} color="#FFFFFF" />
             </Pressable>
-            <Pressable
-              onPress={() => {
-                if (Platform.OS !== "web") {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                }
-                router.push("/asset/new");
-              }}
-              style={({ pressed }) => [
-                styles.iconBtn,
-                {
-                  backgroundColor: colors.brandGold,
-                  borderColor: colors.brandGold,
-                  opacity: pressed ? 0.85 : 1,
-                  transform: [{ scale: pressed ? 0.96 : 1 }],
-                },
-              ]}
-            >
-              <Feather name="plus" size={20} color={colors.brandNavyDeep} />
-            </Pressable>
+            {user?.permissions?.canCreateAsset ? (
+              <Pressable
+                onPress={() => {
+                  if (Platform.OS !== "web") {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }
+                  router.push("/asset/new");
+                }}
+                style={({ pressed }) => [
+                  styles.iconBtn,
+                  {
+                    backgroundColor: colors.brandGold,
+                    borderColor: colors.brandGold,
+                    opacity: pressed ? 0.85 : 1,
+                    transform: [{ scale: pressed ? 0.96 : 1 }],
+                  },
+                ]}
+              >
+                <Feather name="plus" size={20} color={colors.brandNavyDeep} />
+              </Pressable>
+            ) : null}
           </View>
         }
       />

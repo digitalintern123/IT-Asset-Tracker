@@ -16,13 +16,14 @@ import { BrandHeader } from "@/components/BrandHeader";
 import { useAssets } from "@/contexts/AssetContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { UserRole, ROLE_LABELS, ROLE_DESCRIPTIONS } from "@/lib/roles";
 
 type FeatherIcon = React.ComponentProps<typeof Feather>["name"];
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { assets, syncing, syncError, lastSyncedAt, refresh } = useAssets();
-  const { user, signOut } = useAuth();
+  const { user, signOut, setDemoRole } = useAuth();
 
   const confirm = (
     title: string,
@@ -206,6 +207,97 @@ export default function SettingsScreen() {
             </View>
           }
         />
+        {user ? (
+          <Row
+            icon="user-check"
+            label="Authorization Role"
+            sublabel={ROLE_DESCRIPTIONS[user.role || "technician"]}
+            colors={colors}
+            right={
+              <View
+                style={[
+                  styles.statusPill,
+                  {
+                    backgroundColor:
+                      user.role === "admin"
+                        ? "#E8F0FE"
+                        : user.role === "technician"
+                        ? "#E6F4EA"
+                        : "#F1F3F4",
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.statusPillText,
+                    {
+                      color:
+                        user.role === "admin"
+                          ? "#1967D2"
+                          : user.role === "technician"
+                          ? "#137333"
+                          : "#5F6368",
+                    },
+                  ]}
+                >
+                  {ROLE_LABELS[user.role || "technician"]}
+                </Text>
+              </View>
+            }
+          />
+        ) : null}
+        {user?.isDemo ? (
+          <View
+            style={{
+              paddingHorizontal: 16,
+              paddingVertical: 14,
+              backgroundColor: colors.card,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 11,
+                fontFamily: "Inter_600SemiBold",
+                color: colors.mutedForeground,
+                marginBottom: 8,
+                letterSpacing: 0.5,
+              }}
+            >
+              DEMO ROLE SWITCHER (TEST RBAC)
+            </Text>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              {(["admin", "technician", "viewer"] as UserRole[]).map((r) => {
+                const active = user.role === r;
+                return (
+                  <Pressable
+                    key={r}
+                    onPress={() => setDemoRole(r)}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 8,
+                      borderRadius: 8,
+                      alignItems: "center",
+                      backgroundColor: active ? colors.primary : colors.muted,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontFamily: "Inter_600SemiBold",
+                        color: active ? "#FFFFFF" : colors.mutedForeground,
+                        textTransform: "capitalize",
+                      }}
+                    >
+                      {r}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
         {user?.isDemo ? (
           <Row
             icon="log-in"

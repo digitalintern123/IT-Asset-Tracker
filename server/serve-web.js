@@ -155,6 +155,30 @@ const server = http.createServer(async (req, res) => {
       const parts = cleanUrl.split("/").filter(Boolean); // ['api', 'assets', ':id']
       const assetId = parts[2] || null;
 
+      // Extract role from token
+      const ADMIN_EMAILS = [
+        "digital.intern@encalm.com",
+        "admin@encalmhospitality.com",
+        "it@encalmhospitality.com",
+      ];
+      let callerRole = "technician";
+      if (userToken) {
+        try {
+          const b64 = userToken.split(".")[1];
+          if (b64) {
+            const raw = Buffer.from(b64.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+            const payload = JSON.parse(raw);
+            const email = (payload.email || payload.upn || payload.preferred_username || "").toLowerCase();
+            const roles = Array.isArray(payload.roles) ? payload.roles.map((r) => r.toLowerCase()) : [];
+            if (roles.some((r) => r.includes("admin")) || ADMIN_EMAILS.includes(email)) {
+              callerRole = "admin";
+            } else if (roles.some((r) => r.includes("viewer") || r.includes("reader"))) {
+              callerRole = "viewer";
+            }
+          }
+        } catch {}
+      }
+
       try {
         if (method === "GET" && !assetId) {
           const assets = await sharepointApi.fetchAllAssets(userToken);
@@ -163,6 +187,10 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (method === "POST" && !assetId) {
+          if (callerRole === "viewer") {
+            sendJson(res, 403, { error: "Forbidden: Viewer role cannot create assets." });
+            return;
+          }
           const body = await parseBody(req);
           const created = await sharepointApi.createAsset(userToken, body);
           sendJson(res, 201, { data: created });
@@ -170,6 +198,10 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (method === "PATCH" && assetId) {
+          if (callerRole === "viewer") {
+            sendJson(res, 403, { error: "Forbidden: Viewer role cannot modify assets." });
+            return;
+          }
           const body = await parseBody(req);
           const updated = await sharepointApi.updateAsset(userToken, assetId, body);
           sendJson(res, 200, { data: updated });
@@ -177,6 +209,10 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (method === "DELETE" && assetId) {
+          if (callerRole !== "admin") {
+            sendJson(res, 403, { error: "Forbidden: Only IT Administrators can permanently delete assets." });
+            return;
+          }
           await sharepointApi.deleteAsset(userToken, assetId);
           sendJson(res, 200, { success: true });
           return;

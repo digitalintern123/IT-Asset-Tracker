@@ -175,18 +175,19 @@ export default function AssetDetailScreen() {
       <Stack.Screen
         options={{
           title: asset.name,
-          headerRight: () => (
-            <Pressable onPress={() => setEditing(true)} hitSlop={8}>
-              <Text
-                style={{
-                  color: colors.primary,
-                  fontFamily: "Inter_600SemiBold",
-                }}
-              >
-                Edit
-              </Text>
-            </Pressable>
-          ),
+          headerRight: () =>
+            user?.permissions?.canEditAsset ? (
+              <Pressable onPress={() => setEditing(true)} hitSlop={8}>
+                <Text
+                  style={{
+                    color: colors.primary,
+                    fontFamily: "Inter_600SemiBold",
+                  }}
+                >
+                  Edit
+                </Text>
+              </Pressable>
+            ) : null,
         }}
       />
 
@@ -296,26 +297,28 @@ export default function AssetDetailScreen() {
         </DetailGroup>
       ) : null}
 
-      <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
-        <Pressable
-          onPress={handleDelete}
-          style={({ pressed }) => [
-            styles.deleteBtn,
-            {
-              backgroundColor: colors.destructive + "12",
-              borderColor: colors.destructive + "33",
-              opacity: pressed ? 0.7 : 1,
-            },
-          ]}
-        >
-          <Feather name="trash-2" size={16} color={colors.destructive} />
-          <Text
-            style={[styles.deleteLabel, { color: colors.destructive }]}
+      {user?.permissions?.canDeleteAsset ? (
+        <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
+          <Pressable
+            onPress={handleDelete}
+            style={({ pressed }) => [
+              styles.deleteBtn,
+              {
+                backgroundColor: colors.destructive + "12",
+                borderColor: colors.destructive + "33",
+                opacity: pressed ? 0.7 : 1,
+              },
+            ]}
           >
-            Delete asset
-          </Text>
-        </Pressable>
-      </View>
+            <Feather name="trash-2" size={16} color={colors.destructive} />
+            <Text
+              style={[styles.deleteLabel, { color: colors.destructive }]}
+            >
+              Delete asset
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       <Text
         style={[

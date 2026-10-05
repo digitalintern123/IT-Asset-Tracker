@@ -252,6 +252,11 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
   // Create asset (supports both Live SharePoint and Demo Sandbox)
   const addAsset = useCallback(
     async (input: AssetInput): Promise<Asset> => {
+      // Role-Based Access Control check
+      if (user?.permissions && !user.permissions.canCreateAsset) {
+        throw new Error("Unauthorized: Your role does not allow creating new assets.");
+      }
+
       // Demo Mode: Local sandbox creation
       if (user?.isDemo) {
         const demoAsset: Asset = {
@@ -293,12 +298,17 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         setSyncing(false);
       }
     },
-    [user?.accessToken, user?.isDemo, assets, getValidAccessToken, updateCache]
+    [user?.accessToken, user?.isDemo, user?.permissions, assets, getValidAccessToken, updateCache]
   );
 
   // Update asset (supports both Live SharePoint and Demo Sandbox)
   const updateAsset = useCallback(
     async (id: string, input: AssetInput): Promise<Asset | undefined> => {
+      // Role-Based Access Control check
+      if (user?.permissions && !user.permissions.canEditAsset) {
+        throw new Error("Unauthorized: Your role does not allow editing assets.");
+      }
+
       // Demo Mode: Local sandbox update
       if (user?.isDemo) {
         const existing = assets.find((a) => a.id === id || a.spItemId === id);
@@ -351,12 +361,17 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         setSyncing(false);
       }
     },
-    [user?.accessToken, user?.isDemo, assets, getValidAccessToken, updateCache]
+    [user?.accessToken, user?.isDemo, user?.permissions, assets, getValidAccessToken, updateCache]
   );
 
   // Delete asset (supports both Live SharePoint and Demo Sandbox)
   const deleteAsset = useCallback(
     async (id: string): Promise<void> => {
+      // Role-Based Access Control check
+      if (user?.permissions && !user.permissions.canDeleteAsset) {
+        throw new Error("Unauthorized: Only IT Administrators can permanently delete assets.");
+      }
+
       // Demo Mode: Local sandbox deletion
       if (user?.isDemo) {
         const next = assets.filter((a) => a.id !== id && a.spItemId !== id);
