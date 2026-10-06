@@ -14,6 +14,7 @@ import {
 import {
   CATEGORIES,
   STATUSES,
+  STATUS_COLORS,
   STATUS_LABELS,
   getCategoryIcon,
 } from "@/constants/categories";
