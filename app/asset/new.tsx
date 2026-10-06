@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Alert, Platform, Pressable, Text, View } from "react-native";
 
@@ -80,6 +80,23 @@ export default function NewAssetScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <Stack.Screen
+        options={{
+          title: "New asset",
+          headerLeft: () => (
+            <Pressable onPress={() => router.back()} hitSlop={8}>
+              <Text
+                style={{
+                  color: colors.primary,
+                  fontFamily: "Inter_500Medium",
+                }}
+              >
+                Cancel
+              </Text>
+            </Pressable>
+          ),
+        }}
+      />
       <AssetForm
         submitLabel="Create asset"
         submitting={submitting}

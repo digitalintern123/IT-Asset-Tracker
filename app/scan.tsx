@@ -146,6 +146,17 @@ function WebQRScanner({
         <Text style={[styles.permMsg, { color: colors.mutedForeground }]}>
           {camError}
         </Text>
+        <Pressable
+          onPress={() => window.history.back()}
+          style={({ pressed }) => [
+            styles.permBtn,
+            { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 },
+          ]}
+        >
+          <Text style={[styles.permBtnLabel, { color: colors.primaryForeground }]}>
+            Back to Assets
+          </Text>
+        </Pressable>
       </View>
     );
   }
@@ -232,7 +243,18 @@ export default function ScanScreen() {
   if (Platform.OS === "web") {
     return (
       <View style={{ flex: 1 }}>
-        <Stack.Screen options={{ title: "Scan asset" }} />
+        <Stack.Screen
+          options={{
+            title: "Scan asset",
+            headerLeft: () => (
+              <Pressable onPress={() => router.back()} hitSlop={8}>
+                <Text style={{ color: colors.primary, fontFamily: "Inter_500Medium" }}>
+                  Cancel
+                </Text>
+              </Pressable>
+            ),
+          }}
+        />
         <WebQRScanner onScan={handleScan} scanError={error} />
       </View>
     );
@@ -242,7 +264,18 @@ export default function ScanScreen() {
   if (!permission) {
     return (
       <View style={[styles.permWrap, { backgroundColor: colors.background }]}>
-        <Stack.Screen options={{ title: "Scan asset" }} />
+        <Stack.Screen
+          options={{
+            title: "Scan asset",
+            headerLeft: () => (
+              <Pressable onPress={() => router.back()} hitSlop={8}>
+                <Text style={{ color: colors.primary, fontFamily: "Inter_500Medium" }}>
+                  Cancel
+                </Text>
+              </Pressable>
+            ),
+          }}
+        />
       </View>
     );
   }
@@ -250,7 +283,18 @@ export default function ScanScreen() {
   if (!permission.granted) {
     return (
       <View style={[styles.permWrap, { backgroundColor: colors.background }]}>
-        <Stack.Screen options={{ title: "Scan asset" }} />
+        <Stack.Screen
+          options={{
+            title: "Scan asset",
+            headerLeft: () => (
+              <Pressable onPress={() => router.back()} hitSlop={8}>
+                <Text style={{ color: colors.primary, fontFamily: "Inter_500Medium" }}>
+                  Cancel
+                </Text>
+              </Pressable>
+            ),
+          }}
+        />
         <Feather name="camera" size={32} color={colors.primary} />
         <Text style={[styles.permTitle, { color: colors.foreground }]}>
           Camera access needed
@@ -274,6 +318,22 @@ export default function ScanScreen() {
             Grant access
           </Text>
         </Pressable>
+        <Pressable
+          onPress={() => router.back()}
+          style={({ pressed }) => [
+            styles.permBtn,
+            { backgroundColor: colors.muted, opacity: pressed ? 0.85 : 1, marginTop: 4 },
+          ]}
+        >
+          <Text
+            style={[
+              styles.permBtnLabel,
+              { color: colors.mutedForeground },
+            ]}
+          >
+            Cancel
+          </Text>
+        </Pressable>
       </View>
     );
   }
@@ -285,6 +345,11 @@ export default function ScanScreen() {
           title: "Scan asset",
           headerTransparent: true,
           headerTintColor: "#fff",
+          headerLeft: () => (
+            <Pressable onPress={() => router.back()} hitSlop={8}>
+              <Feather name="x" size={24} color="#FFFFFF" />
+            </Pressable>
+          ),
         }}
       />
       <CameraView
