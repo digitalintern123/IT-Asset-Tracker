@@ -54,8 +54,20 @@ export function fromSpItem(item: any): Asset {
     } catch {}
   }
 
+  // Extract Approval Request if pending or recorded
+  let approvalRequest = undefined;
+  if (f.Notes && typeof f.Notes === "string" && f.Notes.includes("<!-- APPROVAL:")) {
+    try {
+      const match = f.Notes.match(/<!-- APPROVAL:(.*?) -->/);
+      if (match && match[1]) {
+        approvalRequest = JSON.parse(match[1]);
+      }
+    } catch {}
+  }
+
   const cleanNotes = (f.Notes || f.Description || "")
     .replace(/<!-- HISTORY:.*? -->/g, "")
+    .replace(/<!-- APPROVAL:.*? -->/g, "")
     .trim();
 
   return {
@@ -78,6 +90,7 @@ export function fromSpItem(item: any): Asset {
     warrantyExpiry: f.WarrantyExpiry ? String(f.WarrantyExpiry) : null,
     notes: cleanNotes,
     assignmentHistory,
+    approvalRequest,
     etag: item["@odata.etag"] || item.eTag || null,
     version: Number(item.version || f._UIVersionString || 1),
     createdAt: String(f.Created || item.createdDateTime || new Date().toISOString()),
@@ -90,6 +103,9 @@ export function toSpFields(input: AssetInput, assetId?: string): Record<string, 
   let notesWithHistory = input.notes || "";
   if (Array.isArray(input.assignmentHistory) && input.assignmentHistory.length > 0) {
     notesWithHistory = `${notesWithHistory}\n<!-- HISTORY:${JSON.stringify(input.assignmentHistory)} -->`.trim();
+  }
+  if (input.approvalRequest) {
+    notesWithHistory = `${notesWithHistory}\n<!-- APPROVAL:${JSON.stringify(input.approvalRequest)} -->`.trim();
   }
 
   const fields: Record<string, unknown> = {
@@ -307,4 +323,65 @@ export async function createSharePointService(
     remove,
     findItemIdByAssetId,
   };
+}
+
+export interface SharePointTestResult {
+  ok: boolean;
+  message: string;
+  latencyMs: number;
+  siteId?: string;
+  listId?: string;
+}
+
+export async function testSharePointConnection(
+  accessToken: string
+): Promise<SharePointTestResult> {
+  const start = Date.now();
+  try {
+    if (!isMsConfigured()) {
+      return {
+        ok: false,
+        message: "SharePoint integration is not configured in MS_CONFIG",
+        latencyMs: 0,
+      };
+    }
+
+    const siteId = await resolveSiteId(accessToken);
+    const listId = await resolveListId(accessToken, siteId);
+
+    // Verify list permissions by requesting top 1 item
+    const base = `${GRAPH}/sites/${siteId}/lists/${listId}/items?$top=1`;
+    const res = await fetch(base, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+      },
+    });
+
+    const latencyMs = Date.now() - start;
+
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: `HTTP ${res.status}: ${res.statusText}`,
+        latencyMs,
+        siteId,
+        listId,
+      };
+    }
+
+    return {
+      ok: true,
+      message: `Successfully connected to list "${MS_CONFIG.LIST_NAME}"`,
+      latencyMs,
+      siteId,
+      listId,
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      message: err?.message || "Failed to reach SharePoint Online",
+      latencyMs: Date.now() - start,
+    };
+  }
 }

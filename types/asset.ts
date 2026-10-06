@@ -28,6 +28,24 @@ export interface AssignmentRecord {
   notes?: string;
 }
 
+export type ApprovalActionType = "delete" | "reassign" | "edit";
+export type ApprovalStatus = "pending" | "approved" | "rejected";
+
+export interface ApprovalRequest {
+  id: string;
+  action: ApprovalActionType;
+  status: ApprovalStatus;
+  requesterName: string;
+  requesterEmail: string;
+  requestedAt: string;
+  reason: string;
+  pendingChanges?: Partial<AssetInput>;
+  approverName?: string;
+  approverEmail?: string;
+  decidedAt?: string;
+  decisionNotes?: string;
+}
+
 export interface Asset {
   id: string;
   spItemId?: string;
@@ -42,6 +60,7 @@ export interface Asset {
   warrantyExpiry: string | null;
   notes: string;
   assignmentHistory?: AssignmentRecord[];
+  approvalRequest?: ApprovalRequest;
   etag?: string;
   version?: number;
   createdAt: string;

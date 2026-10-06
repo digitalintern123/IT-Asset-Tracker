@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import React from "react";
+import React, { useState } from "react";
 import {
   Alert,
   Platform,
@@ -17,13 +17,16 @@ import { useAssets } from "@/contexts/AssetContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { UserRole, ROLE_LABELS, ROLE_DESCRIPTIONS } from "@/lib/roles";
+import { testSharePointConnection, SharePointTestResult } from "@/lib/sharepoint";
 
 type FeatherIcon = React.ComponentProps<typeof Feather>["name"];
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { assets, syncing, syncError, lastSyncedAt, refresh } = useAssets();
-  const { user, signOut, setDemoRole } = useAuth();
+  const { user, signOut, setDemoRole, getValidAccessToken } = useAuth();
+  const [testingSp, setTestingSp] = useState(false);
+  const [testResult, setTestResult] = useState<SharePointTestResult | null>(null);
 
   const confirm = (
     title: string,
@@ -175,6 +178,88 @@ export default function SettingsScreen() {
                 ]}
               >
                 {user?.isDemo ? "Simulated" : user ? "Connected" : "Disconnected"}
+              </Text>
+            </View>
+          }
+        />
+        <Row
+          icon="activity"
+          label="Test SharePoint Connection"
+          sublabel={
+            testingSp
+              ? "Pinging Microsoft Graph API..."
+              : testResult
+              ? `${testResult.message} (${testResult.latencyMs}ms)`
+              : "Verify Graph token, Site ID & List access"
+          }
+          colors={colors}
+          onPress={async () => {
+            if (user?.isDemo) {
+              setTestResult({
+                ok: true,
+                message: "Demo Mode active: Local mock database simulated successfully",
+                latencyMs: 14,
+              });
+              return;
+            }
+            const token = (await getValidAccessToken()) || user?.accessToken;
+            if (!token) {
+              if (Platform.OS === "web") window.alert("Sign in required to test SharePoint connection.");
+              else Alert.alert("Authentication Required", "Please sign in with your Microsoft account first.");
+              return;
+            }
+            setTestingSp(true);
+            setTestResult(null);
+            try {
+              const res = await testSharePointConnection(token);
+              setTestResult(res);
+              if (Platform.OS !== "web") {
+                Haptics.notificationAsync(
+                  res.ok
+                    ? Haptics.NotificationFeedbackType.Success
+                    : Haptics.NotificationFeedbackType.Error
+                );
+              }
+            } catch (err: any) {
+              setTestResult({
+                ok: false,
+                message: err?.message || "Diagnostic check failed",
+                latencyMs: 0,
+              });
+            } finally {
+              setTestingSp(false);
+            }
+          }}
+          right={
+            <View
+              style={[
+                styles.statusPill,
+                {
+                  backgroundColor: testingSp
+                    ? colors.primary + "18"
+                    : testResult
+                    ? testResult.ok
+                      ? "#E6F4EA"
+                      : "#FCE8E6"
+                    : colors.muted,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.statusPillText,
+                  {
+                    color: testingSp
+                      ? colors.primary
+                      : testResult
+                      ? testResult.ok
+                        ? "#137333"
+                        : "#C5221F"
+                      : colors.mutedForeground,
+                  },
+                ]}
+              >
+                {testingSp ? "Testing..." : testResult ? (testResult.ok ? "Passed" : "Failed") : "Run Test"}
               </Text>
             </View>
           }

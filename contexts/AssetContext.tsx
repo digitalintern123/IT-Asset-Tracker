@@ -129,6 +129,24 @@ interface AssetContextValue {
   addAsset: (input: AssetInput) => Promise<Asset>;
   updateAsset: (id: string, input: AssetInput) => Promise<Asset | undefined>;
   deleteAsset: (id: string) => Promise<void>;
+  reassignAsset: (
+    id: string,
+    data: {
+      newAssignee: string;
+      assigneeEmail?: string;
+      location?: string;
+      reason?: string;
+    }
+  ) => Promise<Asset | undefined>;
+  requestApproval: (
+    id: string,
+    request: Omit<import("@/types/asset").ApprovalRequest, "id" | "requestedAt" | "status">
+  ) => Promise<Asset | undefined>;
+  resolveApproval: (
+    id: string,
+    approved: boolean,
+    decisionNotes?: string
+  ) => Promise<void>;
   refresh: () => Promise<void>;
 }
 
@@ -567,6 +585,184 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
     [user?.accessToken, user?.isDemo, user?.permissions, assets, getValidAccessToken, updateCache]
   );
 
+  // 6. Reassign Asset
+  const reassignAsset = useCallback(
+    async (
+      id: string,
+      data: {
+        newAssignee: string;
+        assigneeEmail?: string;
+        location?: string;
+        reason?: string;
+      }
+    ): Promise<Asset | undefined> => {
+      const existing = assets.find((a) => matchesAsset(a, id));
+      if (!existing) {
+        throw new Error(`Asset ${id} not found.`);
+      }
+
+      const prevHistory: AssignmentRecord[] = Array.isArray(existing.assignmentHistory)
+        ? [...existing.assignmentHistory]
+        : [];
+
+      // Close out active custody if previous assignee existed
+      const nowIso = new Date().toISOString();
+      const updatedHistory: AssignmentRecord[] = prevHistory.map((rec) => {
+        if (!rec.returnedAt) {
+          return { ...rec, returnedAt: nowIso };
+        }
+        return rec;
+      });
+
+      // Append new custody record
+      const newRecord: AssignmentRecord = {
+        id: `hist_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        assignee: data.newAssignee,
+        assignedBy: user?.name || "IT Staff",
+        assignedAt: nowIso,
+        location: data.location || existing.location,
+        notes: data.reason || "Reassigned to new custodian",
+      };
+      updatedHistory.push(newRecord);
+
+      const updatedInput: AssetInput = {
+        name: existing.name,
+        category: existing.category,
+        serialNumber: existing.serialNumber,
+        status: "in_use",
+        assignee: data.newAssignee,
+        location: data.location || existing.location,
+        purchaseDate: existing.purchaseDate,
+        purchasePrice: existing.purchasePrice,
+        warrantyExpiry: existing.warrantyExpiry,
+        notes: existing.notes,
+        assignmentHistory: updatedHistory,
+      };
+
+      return await updateAsset(id, updatedInput);
+    },
+    [assets, user?.name, updateAsset]
+  );
+
+  // 7. Request Action Approval (Delete, Edit, Reassign)
+  const requestApproval = useCallback(
+    async (
+      id: string,
+      request: Omit<import("@/types/asset").ApprovalRequest, "id" | "requestedAt" | "status">
+    ): Promise<Asset | undefined> => {
+      const existing = assets.find((a) => matchesAsset(a, id));
+      if (!existing) {
+        throw new Error(`Asset ${id} not found.`);
+      }
+
+      const fullRequest: import("@/types/asset").ApprovalRequest = {
+        ...request,
+        id: `appr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        status: "pending",
+        requestedAt: new Date().toISOString(),
+      };
+
+      const updatedInput: AssetInput = {
+        name: existing.name,
+        category: existing.category,
+        serialNumber: existing.serialNumber,
+        status: existing.status,
+        assignee: existing.assignee,
+        location: existing.location,
+        purchaseDate: existing.purchaseDate,
+        purchasePrice: existing.purchasePrice,
+        warrantyExpiry: existing.warrantyExpiry,
+        notes: existing.notes,
+        assignmentHistory: existing.assignmentHistory,
+        approvalRequest: fullRequest,
+      };
+
+      return await updateAsset(id, updatedInput);
+    },
+    [assets, updateAsset]
+  );
+
+  // 8. Resolve Action Approval (Approve / Reject)
+  const resolveApproval = useCallback(
+    async (
+      id: string,
+      approved: boolean,
+      decisionNotes?: string
+    ): Promise<void> => {
+      const existing = assets.find((a) => matchesAsset(a, id));
+      if (!existing || !existing.approvalRequest) {
+        return;
+      }
+
+      const req = existing.approvalRequest;
+
+      if (!approved) {
+        // Rejected: clear the pending approval request
+        const resolvedRequest: import("@/types/asset").ApprovalRequest = {
+          ...req,
+          status: "rejected",
+          approverName: user?.name,
+          approverEmail: user?.email,
+          decidedAt: new Date().toISOString(),
+          decisionNotes,
+        };
+
+        const updatedInput: AssetInput = {
+          name: existing.name,
+          category: existing.category,
+          serialNumber: existing.serialNumber,
+          status: existing.status,
+          assignee: existing.assignee,
+          location: existing.location,
+          purchaseDate: existing.purchaseDate,
+          purchasePrice: existing.purchasePrice,
+          warrantyExpiry: existing.warrantyExpiry,
+          notes: existing.notes,
+          assignmentHistory: existing.assignmentHistory,
+          approvalRequest: resolvedRequest,
+        };
+        await updateAsset(id, updatedInput);
+        return;
+      }
+
+      // Approved: Execute the requested action
+      if (req.action === "delete") {
+        await deleteAsset(id);
+      } else if (req.action === "reassign" && req.pendingChanges) {
+        await updateAsset(id, {
+          name: existing.name,
+          category: existing.category,
+          serialNumber: existing.serialNumber,
+          status: "in_use",
+          assignee: req.pendingChanges.assignee || existing.assignee,
+          location: req.pendingChanges.location || existing.location,
+          purchaseDate: existing.purchaseDate,
+          purchasePrice: existing.purchasePrice,
+          warrantyExpiry: existing.warrantyExpiry,
+          notes: existing.notes,
+          assignmentHistory: existing.assignmentHistory,
+          approvalRequest: undefined,
+        });
+      } else if (req.action === "edit" && req.pendingChanges) {
+        await updateAsset(id, {
+          name: req.pendingChanges.name ?? existing.name,
+          category: req.pendingChanges.category ?? existing.category,
+          serialNumber: req.pendingChanges.serialNumber ?? existing.serialNumber,
+          status: req.pendingChanges.status ?? existing.status,
+          assignee: req.pendingChanges.assignee ?? existing.assignee,
+          location: req.pendingChanges.location ?? existing.location,
+          purchaseDate: req.pendingChanges.purchaseDate ?? existing.purchaseDate,
+          purchasePrice: req.pendingChanges.purchasePrice ?? existing.purchasePrice,
+          warrantyExpiry: req.pendingChanges.warrantyExpiry ?? existing.warrantyExpiry,
+          notes: req.pendingChanges.notes ?? existing.notes,
+          assignmentHistory: existing.assignmentHistory,
+          approvalRequest: undefined,
+        });
+      }
+    },
+    [assets, user?.name, user?.email, updateAsset, deleteAsset]
+  );
+
   const value = useMemo<AssetContextValue>(
     () => ({
       assets,
@@ -579,6 +775,9 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       addAsset,
       updateAsset,
       deleteAsset,
+      reassignAsset,
+      requestApproval,
+      resolveApproval,
       refresh,
     }),
     [
@@ -592,6 +791,9 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       addAsset,
       updateAsset,
       deleteAsset,
+      reassignAsset,
+      requestApproval,
+      resolveApproval,
       refresh,
     ]
   );
