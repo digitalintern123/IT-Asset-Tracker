@@ -53,6 +53,7 @@ export function AssetForm({
     isCustomInitial ? initial?.category ?? "" : "",
   );
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
 
   const [name, setName] = useState(initial?.name ?? "");
   const [serialNumber, setSerialNumber] = useState(initial?.serialNumber ?? "");
@@ -73,29 +74,74 @@ export function AssetForm({
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async () => {
+    // 1. Asset Name is mandatory
     if (!name.trim()) {
-      setError("Name is required");
+      setError("Asset Name is required *");
       return;
     }
+    // 2. Category is mandatory (including custom text if Other)
     if (selectedCategory === "Other" && !customCategory.trim()) {
-      setError("Please specify the custom category name");
+      setError("Please specify the custom category name *");
       return;
     }
-    if (status === "in_use" && !assignee.trim()) {
-      setError("Assignee name is strictly required when marking asset as In Use");
+    // 3. Serial Number is mandatory
+    if (!serialNumber.trim()) {
+      setError("Serial Number is required *");
       return;
     }
+    // 4. Status is mandatory
+    if (!status) {
+      setError("Asset Status is required *");
+      return;
+    }
+    // 5. Assignee Name is mandatory
+    if (!assignee.trim()) {
+      setError("Assigned to (Custodian name) is required *");
+      return;
+    }
+    // 6. Assignee Email is mandatory
+    if (!assigneeEmail.trim()) {
+      setError("Assignee O365 email is required *");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(assigneeEmail.trim())) {
+      setError("Please enter a valid email address (e.g. name@encalm.com) *");
+      return;
+    }
+    // 7. Location is mandatory
+    if (!location.trim()) {
+      setError("Location / Airport terminal is required *");
+      return;
+    }
+    // 8. Purchase Date is mandatory
+    if (!purchaseDate.trim()) {
+      setError("Purchase date (YYYY-MM-DD) is required *");
+      return;
+    }
+    // 9. Purchase Price is mandatory
+    const cleanPriceStr = purchasePriceText.replace(/[^0-9.]/g, "");
+    const price = parseFloat(cleanPriceStr);
+    if (!purchasePriceText.trim() || !Number.isFinite(price) || price < 0) {
+      setError("Purchase price (₹ INR) is required *");
+      return;
+    }
+    // 10. Warranty Expiry is mandatory
+    if (!warrantyExpiry.trim()) {
+      setError("Warranty expiry date (YYYY-MM-DD) is required *");
+      return;
+    }
+    // 11. Maintenance Notes required only if in maintenance
     if (status === "maintenance" && !notes.trim()) {
-      setError("Maintenance notes detailing the issue or repair reason are required");
+      setError("Maintenance notes detailing the issue or repair reason are required *");
       return;
     }
+
     setError(null);
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     const finalCategory =
       selectedCategory === "Other" ? customCategory.trim() : selectedCategory;
-    const price = parseFloat(purchasePriceText.replace(/[^0-9.]/g, ""));
     await onSubmit({
       input: {
         name: name.trim(),
@@ -105,7 +151,7 @@ export function AssetForm({
         assignee: assignee.trim(),
         location: location.trim(),
         purchaseDate: purchaseDate.trim(),
-        purchasePrice: Number.isFinite(price) ? price : 0,
+        purchasePrice: price,
         warrantyExpiry: warrantyExpiry.trim() || null,
         notes: notes.trim(),
       },
@@ -129,7 +175,7 @@ export function AssetForm({
       showsVerticalScrollIndicator={false}
     >
       <Section label="Asset" colors={colors}>
-        <Field label="Name" colors={colors}>
+        <Field label="Name *" colors={colors}>
           <TextInput
             value={name}
             onChangeText={setName}
@@ -138,7 +184,7 @@ export function AssetForm({
             style={inputStyle}
           />
         </Field>
-        <Field label="Category" colors={colors}>
+        <Field label="Category *" colors={colors}>
           <Pressable
             onPress={() => setDropdownOpen((prev) => !prev)}
             style={({ pressed }) => [
@@ -270,11 +316,11 @@ export function AssetForm({
             </Text>
           </Field>
         ) : null}
-        <Field label="Serial number" colors={colors}>
+        <Field label="Serial number *" colors={colors}>
           <TextInput
             value={serialNumber}
             onChangeText={setSerialNumber}
-            placeholder="Optional"
+            placeholder="e.g. C02G1234MD6R"
             placeholderTextColor={colors.mutedForeground}
             autoCapitalize="characters"
             style={inputStyle}
@@ -283,16 +329,120 @@ export function AssetForm({
       </Section>
 
       <Section label="Assignment" colors={colors}>
-        <Field label="Status" colors={colors}>
-          <Chips
-            options={STATUSES}
-            value={status}
-            onChange={setStatus}
-            renderLabel={(s) => STATUS_LABELS[s as AssetStatus]}
-            colors={colors}
-          />
+        <Field label="Status *" colors={colors}>
+          <Pressable
+            onPress={() => setStatusDropdownOpen((prev) => !prev)}
+            style={({ pressed }) => [
+              styles.dropdownTrigger,
+              {
+                backgroundColor: colors.card,
+                borderColor: statusDropdownOpen ? colors.primary : colors.border,
+                opacity: pressed ? 0.9 : 1,
+              },
+            ]}
+          >
+            <View style={styles.dropdownLeft}>
+              <View
+                style={[
+                  styles.dropdownIconWrap,
+                  { backgroundColor: STATUS_COLORS[status].bg },
+                ]}
+              >
+                <View
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 5,
+                    backgroundColor: STATUS_COLORS[status].dot,
+                  }}
+                />
+              </View>
+              <Text style={[styles.dropdownValue, { color: colors.foreground }]}>
+                {STATUS_LABELS[status]}
+              </Text>
+            </View>
+            <Feather
+              name={statusDropdownOpen ? "chevron-up" : "chevron-down"}
+              size={18}
+              color={colors.mutedForeground}
+            />
+          </Pressable>
+
+          {statusDropdownOpen ? (
+            <View
+              style={[
+                styles.dropdownMenu,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              {STATUSES.map((st, i) => {
+                const isSelected = st === status;
+                return (
+                  <Pressable
+                    key={st}
+                    onPress={() => {
+                      if (Platform.OS !== "web") {
+                        Haptics.selectionAsync();
+                      }
+                      setStatus(st);
+                      setStatusDropdownOpen(false);
+                    }}
+                    style={({ pressed }) => [
+                      styles.dropdownOption,
+                      i < STATUSES.length - 1 && {
+                        borderBottomWidth: StyleSheet.hairlineWidth,
+                        borderBottomColor: colors.border,
+                      },
+                      isSelected && {
+                        backgroundColor: colors.brandNavy + "18",
+                      },
+                      pressed && { opacity: 0.7 },
+                    ]}
+                  >
+                    <View style={styles.dropdownLeft}>
+                      <View
+                        style={[
+                          styles.dropdownIconWrap,
+                          {
+                            backgroundColor: STATUS_COLORS[st].bg,
+                          },
+                        ]}
+                      >
+                        <View
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: 4,
+                            backgroundColor: STATUS_COLORS[st].dot,
+                          }}
+                        />
+                      </View>
+                      <Text
+                        style={[
+                          styles.dropdownOptionText,
+                          {
+                            color: isSelected
+                              ? colors.primary
+                              : colors.foreground,
+                            fontFamily: isSelected
+                              ? "Inter_600SemiBold"
+                              : "Inter_400Regular",
+                          },
+                        ]}
+                      >
+                        {STATUS_LABELS[st]}
+                      </Text>
+                    </View>
+                    {isSelected ? (
+                      <Feather name="check" size={16} color={colors.primary} />
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
         </Field>
-        <Field label="Assigned to" colors={colors}>
+        <Field label="Assigned to *" colors={colors}>
           <TextInput
             value={assignee}
             onChangeText={setAssignee}
@@ -301,7 +451,7 @@ export function AssetForm({
             style={inputStyle}
           />
         </Field>
-        <Field label="Assignee O365 email" colors={colors}>
+        <Field label="Assignee O365 email *" colors={colors}>
           <TextInput
             value={assigneeEmail}
             onChangeText={setAssigneeEmail}
@@ -312,11 +462,11 @@ export function AssetForm({
             style={inputStyle}
           />
         </Field>
-        <Field label="Location" colors={colors}>
+        <Field label="Location *" colors={colors}>
           <TextInput
             value={location}
             onChangeText={setLocation}
-            placeholder="e.g. HQ — Floor 3"
+            placeholder="e.g. HQ — Floor 3 / T3 Terminal"
             placeholderTextColor={colors.mutedForeground}
             style={inputStyle}
           />
@@ -324,7 +474,7 @@ export function AssetForm({
       </Section>
 
       <Section label="Purchase" colors={colors}>
-        <Field label="Purchase date (YYYY-MM-DD)" colors={colors}>
+        <Field label="Purchase date (YYYY-MM-DD) *" colors={colors}>
           <TextInput
             value={purchaseDate}
             onChangeText={setPurchaseDate}
@@ -334,7 +484,7 @@ export function AssetForm({
             autoCapitalize="none"
           />
         </Field>
-        <Field label="Purchase price (₹ INR)" colors={colors}>
+        <Field label="Purchase price (₹ INR) *" colors={colors}>
           <TextInput
             value={purchasePriceText}
             onChangeText={setPurchasePriceText}
@@ -344,11 +494,11 @@ export function AssetForm({
             style={inputStyle}
           />
         </Field>
-        <Field label="Warranty expiry (YYYY-MM-DD)" colors={colors}>
+        <Field label="Warranty expiry (YYYY-MM-DD) *" colors={colors}>
           <TextInput
             value={warrantyExpiry}
             onChangeText={setWarrantyExpiry}
-            placeholder="Optional"
+            placeholder="2027-01-15"
             placeholderTextColor={colors.mutedForeground}
             style={inputStyle}
             autoCapitalize="none"
@@ -357,18 +507,20 @@ export function AssetForm({
       </Section>
 
       <Section label="Notes" colors={colors}>
-        <TextInput
-          value={notes}
-          onChangeText={setNotes}
-          placeholder="Anything worth remembering"
-          placeholderTextColor={colors.mutedForeground}
-          multiline
-          numberOfLines={4}
-          style={[
-            inputStyle,
-            { minHeight: 96, textAlignVertical: "top", paddingTop: 12 },
-          ]}
-        />
+        <Field label="Notes (Optional)" colors={colors}>
+          <TextInput
+            value={notes}
+            onChangeText={setNotes}
+            placeholder="Anything worth remembering (optional)"
+            placeholderTextColor={colors.mutedForeground}
+            multiline
+            numberOfLines={4}
+            style={[
+              inputStyle,
+              { minHeight: 96, textAlignVertical: "top", paddingTop: 12 },
+            ]}
+          />
+        </Field>
       </Section>
 
       {error ? (
