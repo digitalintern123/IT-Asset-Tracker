@@ -84,17 +84,38 @@ export default function NewAssetScreen() {
         options={{
           title: "New asset",
           headerLeft: () => (
-            <Pressable onPress={() => router.back()} hitSlop={8}>
+            <Pressable
+              onPress={() => router.back()}
+              hitSlop={8}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                paddingVertical: 6,
+                paddingHorizontal: 10,
+                marginRight: 16,
+                borderRadius: 8,
+                backgroundColor: Platform.OS === "web" ? colors.secondary : "transparent",
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Feather
+                name="x"
+                size={16}
+                color={Platform.OS === "web" ? colors.foreground : colors.primary}
+                style={{ marginRight: 4 }}
+              />
               <Text
                 style={{
-                  color: colors.primary,
+                  color: Platform.OS === "web" ? colors.foreground : colors.primary,
                   fontFamily: "Inter_500Medium",
+                  fontSize: 14,
                 }}
               >
                 Cancel
               </Text>
             </Pressable>
           ),
+          headerRight: () => null,
         }}
       />
       <AssetForm

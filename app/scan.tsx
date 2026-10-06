@@ -247,8 +247,28 @@ export default function ScanScreen() {
           options={{
             title: "Scan asset",
             headerLeft: () => (
-              <Pressable onPress={() => router.back()} hitSlop={8}>
-                <Text style={{ color: colors.primary, fontFamily: "Inter_500Medium" }}>
+              <Pressable
+                onPress={() => router.back()}
+                hitSlop={8}
+                style={({ pressed }) => ({
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingVertical: 6,
+                  paddingHorizontal: 10,
+                  marginRight: 16,
+                  borderRadius: 8,
+                  backgroundColor: colors.secondary,
+                  opacity: pressed ? 0.7 : 1,
+                })}
+              >
+                <Feather name="x" size={16} color={colors.foreground} style={{ marginRight: 4 }} />
+                <Text
+                  style={{
+                    color: colors.foreground,
+                    fontFamily: "Inter_500Medium",
+                    fontSize: 14,
+                  }}
+                >
                   Cancel
                 </Text>
               </Pressable>
