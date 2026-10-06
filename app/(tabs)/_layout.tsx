@@ -16,10 +16,6 @@ function NativeTabLayout() {
         <Icon sf={{ default: "shippingbox", selected: "shippingbox.fill" }} />
         <Label>Assets</Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="operations">
-        <Icon sf={{ default: "person.2", selected: "person.2.fill" }} />
-        <Label>Operations</Label>
-      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="dashboard">
         <Icon
           sf={{
@@ -88,18 +84,6 @@ function ClassicTabLayout() {
               <SymbolView name="shippingbox" tintColor={color} size={24} />
             ) : (
               <Feather name="box" size={22} color={color} />
-            ),
-        }}
-      />
-      <Tabs.Screen
-        name="operations"
-        options={{
-          title: "Operations",
-          tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="person.2" tintColor={color} size={24} />
-            ) : (
-              <Feather name="users" size={22} color={color} />
             ),
         }}
       />

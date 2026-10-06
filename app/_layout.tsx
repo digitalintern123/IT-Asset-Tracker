@@ -17,8 +17,6 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AssetProvider } from "@/contexts/AssetContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
-import { ITAMProvider } from "@/contexts/ITAMContext";
-
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
@@ -57,22 +55,6 @@ function RootLayoutNav() {
           name="scan"
           options={{ title: "Scan", presentation: "modal" }}
         />
-        <Stack.Screen
-          name="operations/action"
-          options={{ title: "Custody Action", presentation: "modal" }}
-        />
-        <Stack.Screen
-          name="operations/onboarding"
-          options={{ title: "New Hire Onboarding", presentation: "modal" }}
-        />
-        <Stack.Screen
-          name="operations/offboarding"
-          options={{ title: "Employee Offboarding", presentation: "modal" }}
-        />
-        <Stack.Screen
-          name="operations/handover"
-          options={{ title: "Digital Handover Slip", presentation: "modal" }}
-        />
       </Stack>
     </>
   );
@@ -102,9 +84,7 @@ export default function RootLayout() {
             <KeyboardProvider>
               <AuthProvider>
                 <AssetProvider>
-                  <ITAMProvider>
-                    <RootLayoutNav />
-                  </ITAMProvider>
+                  <RootLayoutNav />
                 </AssetProvider>
               </AuthProvider>
             </KeyboardProvider>

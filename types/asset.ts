@@ -26,8 +26,6 @@ export interface AssignmentRecord {
   notes?: string;
 }
 
-import type { MaintenanceRecord, WarrantyDetails } from "./itam";
-
 export interface Asset {
   id: string;
   spItemId?: string;
@@ -36,16 +34,12 @@ export interface Asset {
   serialNumber: string;
   status: AssetStatus;
   assignee: string;
-  employeeId?: string;
   location: string;
-  condition?: "new" | "excellent" | "good" | "fair";
   purchaseDate: string;
   purchasePrice: number;
   warrantyExpiry: string | null;
-  warrantyDetails?: WarrantyDetails;
   notes: string;
   assignmentHistory?: AssignmentRecord[];
-  maintenanceHistory?: MaintenanceRecord[];
   etag?: string;
   version?: number;
   createdAt: string;
