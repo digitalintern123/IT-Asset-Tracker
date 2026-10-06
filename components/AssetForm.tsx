@@ -16,7 +16,6 @@ import {
   STATUSES,
   STATUS_COLORS,
   STATUS_LABELS,
-  STATUS_COLORS,
   getCategoryIcon,
 } from "@/constants/categories";
 import { useColors } from "@/hooks/useColors";
