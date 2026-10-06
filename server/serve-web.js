@@ -88,17 +88,34 @@ function sendFile(filePath, res) {
 }
 
 function safeFilePath(requestPath) {
-  const decodedPath = decodeURIComponent(requestPath.split("?")[0]);
+  let decodedPath;
+  try {
+    decodedPath = decodeURIComponent(requestPath.split("?")[0]);
+  } catch {
+    return null;
+  }
   const relativePath = decodedPath.replace(/^[/\\]+/, "");
   if (!relativePath) return null;
   const filePath = path.resolve(STATIC_ROOT, relativePath);
-  return filePath.startsWith(STATIC_ROOT) ? filePath : null;
+  if (filePath === STATIC_ROOT) return filePath;
+  return filePath.startsWith(STATIC_ROOT + path.sep) ? filePath : null;
 }
+
+const MAX_BODY_BYTES = 1_048_576; // 1 MB
 
 function parseBody(req) {
   return new Promise((resolve, reject) => {
     let body = "";
-    req.on("data", (chunk) => (body += chunk));
+    let size = 0;
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        req.destroy();
+        reject(new Error("Request body too large"));
+        return;
+      }
+      body += chunk;
+    });
     req.on("end", () => {
       try {
         resolve(body ? JSON.parse(body) : {});
@@ -115,7 +132,7 @@ function sendJson(res, statusCode, data) {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-ID-Token",
   });
   res.end(JSON.stringify(data));
 }
@@ -138,7 +155,7 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(204, {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-ID-Token",
       });
       res.end();
       return;
@@ -198,32 +215,43 @@ const server = http.createServer(async (req, res) => {
         "admin@encalmhospitality.com",
         "it@encalmhospitality.com",
       ];
-      let callerRole = "technician";
+      // Role and email are trusted only from a signature-verified id_token.
+      // The bearer is a Graph access token, which cannot be verified here.
+      let callerRole = "viewer";
       if (userToken) {
+        let payload;
         try {
-          const b64 = userToken.split(".")[1];
-          if (b64) {
-            const raw = Buffer.from(b64.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
-            const payload = JSON.parse(raw);
-            const email = (payload.email || payload.upn || payload.preferred_username || "").toLowerCase();
-            const roles = Array.isArray(payload.roles) ? payload.roles.map((r) => r.toLowerCase()) : [];
-            if (roles.some((r) => r.includes("admin")) || ADMIN_EMAILS.includes(email)) {
-              callerRole = "admin";
-            } else if (roles.some((r) => r.includes("viewer") || r.includes("reader"))) {
-              callerRole = "viewer";
-            }
-          }
-        } catch {}
+          payload = await sharepointApi.verifyIdToken(req.headers["x-id-token"]);
+        } catch (verifyErr) {
+          console.warn(`Rejected id_token on ${method} ${cleanUrl}:`, verifyErr.message);
+          sendJson(res, 401, { error: "Unauthorized: Microsoft 365 sign-in could not be verified." });
+          return;
+        }
+        const email = (payload.email || payload.upn || payload.preferred_username || "").toLowerCase();
+        const roles = Array.isArray(payload.roles) ? payload.roles.map((r) => String(r).toLowerCase()) : [];
+        if (roles.some((r) => r.includes("admin")) || ADMIN_EMAILS.includes(email)) {
+          callerRole = "admin";
+        } else if (roles.some((r) => r.includes("technician") || r.includes("staff"))) {
+          callerRole = "technician";
+        }
       }
 
       try {
         if (method === "GET" && !assetId) {
+          if (!userToken) {
+            sendJson(res, 401, { error: "Unauthorized: Microsoft 365 sign-in required." });
+            return;
+          }
           const assets = await sharepointApi.fetchAllAssets(userToken);
           sendJson(res, 200, { data: assets, count: assets.length });
           return;
         }
 
         if (method === "POST" && !assetId) {
+          if (!userToken) {
+            sendJson(res, 401, { error: "Unauthorized: Microsoft 365 sign-in required." });
+            return;
+          }
           if (callerRole === "viewer") {
             sendJson(res, 403, { error: "Forbidden: Viewer role cannot create assets." });
             return;
@@ -235,6 +263,10 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (method === "PATCH" && assetId) {
+          if (!userToken) {
+            sendJson(res, 401, { error: "Unauthorized: Microsoft 365 sign-in required." });
+            return;
+          }
           if (callerRole === "viewer") {
             sendJson(res, 403, { error: "Forbidden: Viewer role cannot modify assets." });
             return;
@@ -247,6 +279,10 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (method === "DELETE" && assetId) {
+          if (!userToken) {
+            sendJson(res, 401, { error: "Unauthorized: Microsoft 365 sign-in required." });
+            return;
+          }
           if (callerRole !== "admin") {
             sendJson(res, 403, { error: "Forbidden: Only IT Administrators can permanently delete assets." });
             return;

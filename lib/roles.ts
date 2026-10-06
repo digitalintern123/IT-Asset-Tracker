@@ -115,8 +115,9 @@ export function resolveUserRole(
     return "admin";
   }
 
-  // 4. Default corporate user role: IT Technician
-  return "technician";
+  // 4. Default corporate user role: read-only until explicitly granted
+  //    an Azure AD app role (Technician / Admin) or listed in ADMIN_EMAILS.
+  return "viewer";
 }
 
 /**

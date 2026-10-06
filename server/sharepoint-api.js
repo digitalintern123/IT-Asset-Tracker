@@ -3,6 +3,7 @@
  * Handles server-to-server Microsoft Graph operations with zero external dependencies.
  */
 
+const crypto = require("crypto");
 const https = require("https");
 const { URL } = require("url");
 
@@ -100,6 +101,72 @@ async function getEffectiveToken(userToken) {
   if (appToken) return appToken;
   if (userToken) return userToken;
   throw new Error("Unauthorized: No Microsoft 365 token or client secret configured.");
+}
+
+// Tenant signing keys for id_token verification, keyed by `kid`.
+let jwksCache = new Map();
+let jwksFetchedAt = 0;
+const JWKS_MIN_REFRESH_MS = 60000;
+const CLOCK_SKEW_SEC = 300;
+
+function base64UrlDecode(segment) {
+  return Buffer.from(segment.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+}
+
+async function refreshJwks() {
+  const res = await request({
+    hostname: "login.microsoftonline.com",
+    path: `/${TENANT_ID}/discovery/v2.0/keys`,
+    method: "GET",
+    timeout: 10000,
+  });
+  if (res.status !== 200 || !Array.isArray(res.data.keys)) {
+    throw new Error(`Failed to fetch signing keys (HTTP ${res.status})`);
+  }
+  const next = new Map();
+  for (const k of res.data.keys) {
+    if (k.kty !== "RSA" || !k.kid || !k.n || !k.e) continue;
+    next.set(k.kid, crypto.createPublicKey({ key: { kty: k.kty, n: k.n, e: k.e }, format: "jwk" }));
+  }
+  jwksCache = next;
+  jwksFetchedAt = Date.now();
+}
+
+async function getSigningKey(kid) {
+  if (!jwksCache.has(kid) && Date.now() - jwksFetchedAt > JWKS_MIN_REFRESH_MS) {
+    await refreshJwks();
+  }
+  const key = jwksCache.get(kid);
+  if (!key) throw new Error("Unknown token signing key");
+  return key;
+}
+
+/**
+ * Verify an Entra ID id_token (RS256 signature, iss, aud, exp, nbf) and return its claims.
+ * The Graph access token cannot be verified by third parties, so role and email
+ * claims are only ever trusted from this verified id_token.
+ */
+async function verifyIdToken(idToken) {
+  if (!idToken || typeof idToken !== "string") throw new Error("Missing id_token");
+  const parts = idToken.split(".");
+  if (parts.length !== 3) throw new Error("Malformed id_token");
+
+  const [h, p, s] = parts;
+  const header = JSON.parse(base64UrlDecode(h).toString("utf8"));
+  if (header.alg !== "RS256" || !header.kid) throw new Error("Unsupported token algorithm");
+
+  const key = await getSigningKey(header.kid);
+  const valid = crypto.createVerify("RSA-SHA256").update(`${h}.${p}`).verify(key, base64UrlDecode(s));
+  if (!valid) throw new Error("Invalid token signature");
+
+  const payload = JSON.parse(base64UrlDecode(p).toString("utf8"));
+  const now = Math.floor(Date.now() / 1000);
+  if (payload.iss !== `https://login.microsoftonline.com/${TENANT_ID}/v2.0`) throw new Error("Invalid token issuer");
+  if (payload.aud !== CLIENT_ID) throw new Error("Invalid token audience");
+  if (typeof payload.exp !== "number" || payload.exp + CLOCK_SKEW_SEC < now) throw new Error("Token expired");
+  if (typeof payload.nbf === "number" && payload.nbf - CLOCK_SKEW_SEC > now) throw new Error("Token not yet valid");
+
+  return payload;
 }
 
 /**
@@ -572,4 +639,5 @@ module.exports = {
   exchangeAuthCode,
   refreshAuthToken,
   getAppToken,
+  verifyIdToken,
 };

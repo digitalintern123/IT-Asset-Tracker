@@ -3,6 +3,7 @@
  * Communicates with the Node.js backend on Render / IIS with seamless fallback.
  */
 
+import { getSecureTokens } from "./secureStorage";
 import { createSharePointService } from "./sharepoint";
 import type { Asset, AssetInput } from "@/types/asset";
 
@@ -19,11 +20,24 @@ function getHeaders(token?: string): Record<string, string> {
   return headers;
 }
 
+// The backend verifies the id_token to establish role and email; the Graph
+// access token in Authorization cannot be verified by a third party.
+async function getAuthHeaders(token?: string): Promise<Record<string, string>> {
+  const headers = getHeaders(token);
+  if (token) {
+    const stored = await getSecureTokens();
+    if (stored?.idToken) {
+      headers["X-ID-Token"] = stored.idToken;
+    }
+  }
+  return headers;
+}
+
 export async function apiFetchAll(token?: string): Promise<Asset[]> {
   try {
     const res = await fetch(`${API_BASE}/api/assets`, {
       method: "GET",
-      headers: getHeaders(token),
+      headers: await getAuthHeaders(token),
     });
 
     if (res.ok) {
@@ -51,7 +65,7 @@ export async function apiCreateAsset(input: AssetInput, token?: string): Promise
   try {
     const res = await fetch(`${API_BASE}/api/assets`, {
       method: "POST",
-      headers: getHeaders(token),
+      headers: await getAuthHeaders(token),
       body: JSON.stringify(input),
     });
 
@@ -83,7 +97,7 @@ export async function apiUpdateAsset(
   ifMatchEtag?: string
 ): Promise<Asset> {
   try {
-    const headers = getHeaders(token);
+    const headers = await getAuthHeaders(token);
     if (ifMatchEtag) {
       headers["If-Match"] = ifMatchEtag;
     }
@@ -124,7 +138,7 @@ export async function apiDeleteAsset(id: string, token?: string): Promise<void> 
   try {
     const res = await fetch(`${API_BASE}/api/assets/${encodeURIComponent(id)}`, {
       method: "DELETE",
-      headers: getHeaders(token),
+      headers: await getAuthHeaders(token),
     });
 
     if (res.ok) {
