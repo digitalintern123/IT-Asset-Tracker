@@ -169,9 +169,11 @@ const server = http.createServer(async (req, res) => {
       cleanUrl === "/status" ||
       cleanUrl === "/api/health"
     ) {
-      sendJson(res, 200, {
-        status: "healthy",
+      const bundleOk = fs.existsSync(path.join(STATIC_ROOT, "index.html"));
+      sendJson(res, bundleOk ? 200 : 503, {
+        status: bundleOk ? "healthy" : "unhealthy",
         service: "encalm-asset-tracker",
+        staticBundle: bundleOk ? "present" : "missing",
         timestamp: Date.now(),
       });
       return;
@@ -336,6 +338,15 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // A request with a file extension is an asset request, not a client-side
+    // route. Returning index.html here produces a MIME-type refusal in the
+    // browser instead of an honest 404.
+    if (path.extname(cleanUrl)) {
+      res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      res.end("Not Found");
+      return;
+    }
+
     // 5. SPA Fallback: root index.html
     const indexFile = path.join(STATIC_ROOT, "index.html");
     if (sendFile(indexFile, res)) {
@@ -356,10 +367,14 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // 8. Safe 200 OK fallback HTML
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    // 8. No static bundle present — this is a broken deploy, not a healthy one.
+    console.error(`No static bundle found under ${STATIC_ROOT}`);
+    res.writeHead(503, {
+      "content-type": "text/html; charset=utf-8",
+      "retry-after": "30",
+    });
     res.end(
-      `<!DOCTYPE html><html><head><title>ENCALM Asset Tracker</title>${FAVICON_HEAD_TAGS}</head><body><h1>ENCALM Asset Tracker</h1><p>Starting up...</p></body></html>`
+      `<!DOCTYPE html><html><head><title>ENCALM Asset Tracker</title>${FAVICON_HEAD_TAGS}</head><body><h1>ENCALM Asset Tracker</h1><p>Static bundle unavailable. The web build did not complete.</p></body></html>`
     );
   } catch (error) {
     console.error("Unhandled server error:", error);

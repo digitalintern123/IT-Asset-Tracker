@@ -190,6 +190,16 @@ async function resolveSiteId(token) {
     timeout: 10000,
   });
 
+  if (res.status === 403 || res.status === 401) {
+    const err = new Error(
+      `Access denied reading SharePoint site (HTTP ${res.status}). The signed-in ` +
+      `account or app registration is missing Sites.ReadWrite.All or ` +
+      `Sites.Selected on ${SHAREPOINT_SITE_URL}.`
+    );
+    err.statusCode = res.status;
+    throw err;
+  }
+
   if (res.status !== 200 || !res.data.id) {
     throw new Error(`Failed to resolve site ID (HTTP ${res.status}): ${JSON.stringify(res.data)}`);
   }
@@ -212,6 +222,16 @@ async function resolveListId(token, siteId) {
     headers: { Authorization: `Bearer ${token}` },
     timeout: 10000,
   });
+
+  if (res.status === 403 || res.status === 401) {
+    const err = new Error(
+      `Access denied reading SharePoint lists (HTTP ${res.status}). The signed-in ` +
+      `account or app registration is missing Sites.ReadWrite.All or ` +
+      `Sites.Selected on ${SHAREPOINT_SITE_URL}.`
+    );
+    err.statusCode = res.status;
+    throw err;
+  }
 
   if (res.status === 200 && res.data.value && res.data.value.length > 0) {
     cachedListId = res.data.value[0].id;
@@ -265,9 +285,17 @@ function mapCategory(raw) {
  */
 function mapStatus(raw) {
   const s = (raw || "").trim().toLowerCase();
+
+  // Check negations and terminal states before the substring matches below,
+  // otherwise "Not in Use" / "Unused" fall into the "use" branch.
+  if (/\b(not|un|never)\b/.test(s) || s.startsWith("un")) {
+    if (s.includes("use") || s.includes("issue") || s.includes("assign")) return "available";
+  }
+  if (s.includes("retir") || s.includes("dispos") || s.includes("written off") ||
+      s.includes("lost") || s.includes("stolen") || s.includes("scrap")) return "retired";
+  if (s.includes("maint") || s.includes("repair") || s.includes("service")) return "maintenance";
   if (s.includes("use") || s.includes("issue") || s.includes("assigned")) return "in_use";
-  if (s.includes("maint") || s.includes("repair")) return "maintenance";
-  if (s.includes("retir") || s.includes("dispos")) return "retired";
+  if (s.includes("avail") || s.includes("spare") || s.includes("stock") || s.includes("store")) return "available";
   return "available";
 }
 
@@ -534,6 +562,9 @@ async function updateAsset(userToken, id, input, ifMatchEtag = null) {
     id,
     spItemId: id,
     ...input,
+    // Carry the caller's etag forward. Dropping it silently disables
+    // If-Match on every subsequent update.
+    etag: ifMatchEtag || input.etag || null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     _syncStatus: "synced",

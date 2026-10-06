@@ -131,7 +131,7 @@ export async function apiUpdateAsset(
 
     if (token) {
       const sp = await createSharePointService(token);
-      return await sp.update(id, input);
+      return await sp.update(id, input, ifMatchEtag);
     }
 
     const errBody = await res.json().catch(() => ({} as any));
@@ -143,7 +143,7 @@ export async function apiUpdateAsset(
   } catch (err: any) {
     if (token && !err.message?.includes("Conflict")) {
       const sp = await createSharePointService(token);
-      return await sp.update(id, input);
+      return await sp.update(id, input, ifMatchEtag);
     }
     throw err;
   }

@@ -139,7 +139,11 @@ interface AssetContextValue {
   isOffline: boolean;
   getAsset: (id: string) => Asset | undefined;
   addAsset: (input: AssetInput) => Promise<Asset>;
-  updateAsset: (id: string, input: AssetInput) => Promise<Asset | undefined>;
+  updateAsset: (
+    id: string,
+    input: AssetInput,
+    opts?: { skipPermissionCheck?: boolean }
+  ) => Promise<Asset | undefined>;
   deleteAsset: (id: string) => Promise<void>;
   reassignAsset: (
     id: string,
@@ -421,9 +425,13 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
 
   // 5. Update asset (FSM transitions + History trail + Concurrency handling + Offline queue)
   const updateAsset = useCallback(
-    async (id: string, input: AssetInput): Promise<Asset | undefined> => {
+    async (
+      id: string,
+      input: AssetInput,
+      opts?: { skipPermissionCheck?: boolean }
+    ): Promise<Asset | undefined> => {
       // 1. RBAC check
-      if (user?.permissions && !user.permissions.canEditAsset) {
+      if (!opts?.skipPermissionCheck && user?.permissions && !user.permissions.canEditAsset) {
         throw new Error("Unauthorized: Your role does not allow editing assets.");
       }
 
@@ -689,6 +697,10 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       id: string,
       request: Omit<import("@/types/asset").ApprovalRequest, "id" | "requestedAt" | "status">
     ): Promise<Asset | undefined> => {
+      if (user?.permissions && !user.permissions.canRequestApproval) {
+        throw new Error("Unauthorized: Your role does not allow requesting changes.");
+      }
+
       const existing = assets.find((a) => matchesAsset(a, id));
       if (!existing) {
         throw new Error(`Asset ${id} not found.`);
@@ -716,9 +728,9 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         approvalRequest: fullRequest,
       };
 
-      return await updateAsset(id, updatedInput);
+      return await updateAsset(id, updatedInput, { skipPermissionCheck: true });
     },
-    [assets, updateAsset]
+    [assets, updateAsset, user?.permissions]
   );
 
   // 8. Resolve Action Approval (Approve / Reject)

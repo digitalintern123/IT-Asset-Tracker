@@ -16,10 +16,10 @@ import { EmptyState } from "@/components/EmptyState";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
-  CATEGORY_ICONS,
   STATUSES,
   STATUS_COLORS,
   STATUS_LABELS,
+  getCategoryIcon,
 } from "@/constants/categories";
 import { useAssets } from "@/contexts/AssetContext";
 import { useColors } from "@/hooks/useColors";
@@ -217,9 +217,7 @@ export default function DashboardScreen() {
               categoryCounts.map(([cat, count], i) => {
                 const max = categoryCounts[0][1];
                 const pct = (count / max) * 100;
-                const icon =
-                  CATEGORY_ICONS[cat as keyof typeof CATEGORY_ICONS] ??
-                  "package";
+                const icon = getCategoryIcon(cat);
                 return (
                   <View
                     key={cat}

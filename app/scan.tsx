@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Haptics from "expo-haptics";
 import { Stack, useRouter } from "expo-router";
+import jsQRModule from "jsqr";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Platform,
@@ -78,12 +79,7 @@ function WebQRScanner({
 
     function tick() {
       if (!isActive) return;
-      const jsQR = (window as any).jsQR;
-      if (!jsQR) {
-        // jsQR not loaded yet — retry
-        rafRef.current = requestAnimationFrame(tick);
-        return;
-      }
+      const jsQR = jsQRModule;
       if (!videoRef.current || !canvasRef.current) return;
       const video = videoRef.current;
       const canvas = canvasRef.current;
@@ -107,27 +103,7 @@ function WebQRScanner({
       rafRef.current = requestAnimationFrame(tick);
     }
 
-    // Load jsQR from CDN safely if not present
-    if (!(window as any).jsQR) {
-      const existingScript = document.querySelector('script[src*="jsqr"]');
-      if (existingScript) {
-        existingScript.addEventListener("load", () => {
-          if (isActive) start();
-        });
-      } else {
-        const script = document.createElement("script");
-        script.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js";
-        script.onload = () => {
-          if (isActive) start();
-        };
-        script.onerror = () => {
-          if (isActive) setCamError("Failed to load QR scanner library.");
-        };
-        document.head.appendChild(script);
-      }
-    } else {
-      start();
-    }
+    start();
 
     return () => {
       isActive = false;

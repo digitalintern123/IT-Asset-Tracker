@@ -21,12 +21,12 @@ if (-not $jsFiles -or $jsFiles.Count -eq 0) {
 $count = 0
 foreach ($file in $jsFiles) {
     $c = Get-Content $file.FullName -Raw
-    $hasFont = $c -match 'assets/__node_modules[^"]*(Feather|MaterialIcons|Ionicons|FontAwesome)\.[^"]*\.ttf'
+    $hasFont = $c -match 'assets/[^"]*(Feather|MaterialIcons|Ionicons|FontAwesome)\.[^"]*\.ttf'
     if ($hasFont) {
-        $c = $c -replace 'assets/__node_modules[^"]*Feather\.[^"]*\.ttf',       'fonts/Feather.ca4b48e04dc1ce10bfbddb262c8b835f.ttf'
-        $c = $c -replace 'assets/__node_modules[^"]*MaterialIcons\.[^"]*\.ttf', 'fonts/MaterialIcons.4e85bc9ebe07e0340c9c4fc2f6c38908.ttf'
-        $c = $c -replace 'assets/__node_modules[^"]*Ionicons\.[^"]*\.ttf',      'fonts/Ionicons.b4eb097d35f44ed943676fd56f6bdc51.ttf'
-        $c = $c -replace 'assets/__node_modules[^"]*FontAwesome\.[^"]*\.ttf',   'fonts/FontAwesome.b06871f281fee6b241d60582ae9369b9.ttf'
+        $c = $c -replace 'assets/[^"]*Feather\.[^"]*\.ttf',       'fonts/Feather.ca4b48e04dc1ce10bfbddb262c8b835f.ttf'
+        $c = $c -replace 'assets/[^"]*MaterialIcons\.[^"]*\.ttf', 'fonts/MaterialIcons.4e85bc9ebe07e0340c9c4fc2f6c38908.ttf'
+        $c = $c -replace 'assets/[^"]*Ionicons\.[^"]*\.ttf',      'fonts/Ionicons.b4eb097d35f44ed943676fd56f6bdc51.ttf'
+        $c = $c -replace 'assets/[^"]*FontAwesome\.[^"]*\.ttf',   'fonts/FontAwesome.b06871f281fee6b241d60582ae9369b9.ttf'
         Set-Content $file.FullName $c -NoNewline
         Write-Host "Patched font paths in: $($file.Name)"
         $count++

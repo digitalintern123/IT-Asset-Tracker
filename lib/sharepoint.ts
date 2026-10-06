@@ -4,6 +4,7 @@
  */
 
 import { MS_CONFIG, isMsConfigured } from "./msConfig";
+import { getCategoryCode } from "@/lib/assetId";
 import type { Asset, AssetCategory, AssetInput, AssetStatus } from "@/types/asset";
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
@@ -28,9 +29,17 @@ function mapCategory(raw: string): AssetCategory {
 
 function mapStatus(raw: string): AssetStatus {
   const s = (raw || "").trim().toLowerCase();
+
+  // Check negations and terminal states before the substring matches below,
+  // otherwise "Not in Use" / "Unused" fall into the "use" branch.
+  if (/\b(not|un|never)\b/.test(s) || s.startsWith("un")) {
+    if (s.includes("use") || s.includes("issue") || s.includes("assign")) return "available";
+  }
+  if (s.includes("retir") || s.includes("dispos") || s.includes("written off") ||
+      s.includes("lost") || s.includes("stolen") || s.includes("scrap")) return "retired";
+  if (s.includes("maint") || s.includes("repair") || s.includes("service")) return "maintenance";
   if (s.includes("use") || s.includes("issue") || s.includes("assigned")) return "in_use";
-  if (s.includes("maint") || s.includes("repair")) return "maintenance";
-  if (s.includes("retir") || s.includes("dispos")) return "retired";
+  if (s.includes("avail") || s.includes("spare") || s.includes("stock") || s.includes("store")) return "available";
   return "available";
 }
 
@@ -146,6 +155,16 @@ async function resolveSiteId(token: string): Promise<string> {
     headers: { Authorization: `Bearer ${token}` },
   });
 
+  if (res.status === 403 || res.status === 401) {
+    const err: any = new Error(
+      `Access denied reading SharePoint site (HTTP ${res.status}). The signed-in ` +
+      `account is missing Sites.ReadWrite.All or Sites.Selected on ` +
+      `${MS_CONFIG.SHAREPOINT_SITE_URL}.`
+    );
+    err.statusCode = res.status;
+    throw err;
+  }
+
   if (!res.ok) {
     throw new Error(`Failed to resolve SharePoint site: HTTP ${res.status}`);
   }
@@ -162,6 +181,16 @@ async function resolveListId(token: string, siteId: string): Promise<string> {
   const res = await fetch(filterUrl, {
     headers: { Authorization: `Bearer ${token}` },
   });
+
+  if (res.status === 403 || res.status === 401) {
+    const err: any = new Error(
+      `Access denied reading SharePoint lists (HTTP ${res.status}). The signed-in ` +
+      `account is missing Sites.ReadWrite.All or Sites.Selected on ` +
+      `${MS_CONFIG.SHAREPOINT_SITE_URL}.`
+    );
+    err.statusCode = res.status;
+    throw err;
+  }
 
   if (res.ok) {
     const data = await res.json();
@@ -196,7 +225,7 @@ async function resolveListId(token: string, siteId: string): Promise<string> {
 export interface SharePointService {
   fetchAll: () => Promise<Asset[]>;
   create: (input: AssetInput) => Promise<Asset>;
-  update: (spItemId: string, input: AssetInput) => Promise<Asset>;
+  update: (spItemId: string, input: AssetInput, ifMatchEtag?: string) => Promise<Asset>;
   remove: (spItemId: string) => Promise<void>;
   findItemIdByAssetId: (assetId: string) => Promise<string | null>;
 }
@@ -242,7 +271,7 @@ export async function createSharePointService(
     const rand = Math.floor(1000 + Math.random() * 9000);
     const assetId = input.id && input.id.startsWith("ENC-")
       ? input.id
-      : `ENC-AST-${year}-${rand}`;
+      : `ENC-${getCategoryCode(input.category)}-${year}-${rand}`;
     const fields = toSpFields(input, assetId);
 
     const res = await fetch(base, {
@@ -262,14 +291,28 @@ export async function createSharePointService(
     return fromSpItem(createdItem);
   }
 
-  async function update(spItemId: string, input: AssetInput): Promise<Asset> {
+  async function update(
+    spItemId: string,
+    input: AssetInput,
+    ifMatchEtag?: string
+  ): Promise<Asset> {
     const fields = toSpFields(input);
+    const patchHeaders: Record<string, string> = { ...headers };
+    if (ifMatchEtag) patchHeaders["If-Match"] = ifMatchEtag;
 
     const res = await fetch(`${base}/${spItemId}/fields`, {
       method: "PATCH",
-      headers,
+      headers: patchHeaders,
       body: JSON.stringify(fields),
     });
+
+    if (res.status === 412 || res.status === 409) {
+      const conflictErr: any = new Error(
+        "Conflict: Asset was modified by another user (ETag mismatch)."
+      );
+      conflictErr.statusCode = 412;
+      throw conflictErr;
+    }
 
     if (!res.ok) {
       const errBody = await res.text().catch(() => "");

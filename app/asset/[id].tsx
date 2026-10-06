@@ -663,6 +663,7 @@ export default function AssetDetailScreen() {
       ) : null}
 
       {/* DELETE / REQUEST DELETION BUTTON */}
+      {canDirectDelete || user?.permissions?.canRequestApproval ? (
       <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
         <Pressable
           onPress={handleDeletePress}
@@ -687,6 +688,7 @@ export default function AssetDetailScreen() {
           </Text>
         </Pressable>
       </View>
+      ) : null}
 
       <Text
         style={[
@@ -792,7 +794,7 @@ export default function AssetDetailScreen() {
           <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Feather name="shield-alert" size={18} color={colors.destructive} />
+                <Feather name="alert-triangle" size={18} color={colors.destructive} />
                 <Text style={[styles.modalTitle, { color: colors.foreground }]}>Request Asset Deletion</Text>
               </View>
               <Pressable onPress={() => setDeleteRequestModalOpen(false)} hitSlop={8}>
