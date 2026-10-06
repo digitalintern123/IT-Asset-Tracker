@@ -3,9 +3,10 @@ import { isLiquidGlassAvailable } from "expo-glass-effect";
 import { Tabs } from "expo-router";
 import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { SymbolView } from "expo-symbols";
-import { Feather } from "@expo/vector-icons";
 import React from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
+
+import { LayoutDashboard, Package, Settings } from "@/components/LucideIcon";
 
 import { useColors } from "@/hooks/useColors";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -109,7 +110,7 @@ function ClassicTabLayout() {
             isIOS ? (
               <SymbolView name="shippingbox" tintColor={color} size={24} />
             ) : (
-              <Feather name="box" size={22} color={color} />
+              <Package size={22} color={color} strokeWidth={2} />
             ),
         }}
       />
@@ -121,7 +122,7 @@ function ClassicTabLayout() {
             isIOS ? (
               <SymbolView name="chart.bar" tintColor={color} size={24} />
             ) : (
-              <Feather name="bar-chart-2" size={22} color={color} />
+              <LayoutDashboard size={22} color={color} strokeWidth={2} />
             ),
         }}
       />
@@ -133,7 +134,7 @@ function ClassicTabLayout() {
             isIOS ? (
               <SymbolView name="gearshape" tintColor={color} size={24} />
             ) : (
-              <Feather name="settings" size={22} color={color} />
+              <Settings size={22} color={color} strokeWidth={2} />
             ),
         }}
       />

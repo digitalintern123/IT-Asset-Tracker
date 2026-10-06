@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Check, ChevronDown, ChevronUp, LucideIcon } from "@/components/LucideIcon";
 import * as Haptics from "expo-haptics";
 import React, { useState } from "react";
 import {
@@ -204,21 +204,22 @@ export function AssetForm({
                   { backgroundColor: colors.secondary },
                 ]}
               >
-                <Feather
+                <LucideIcon
                   name={getCategoryIcon(selectedCategory)}
                   size={16}
                   color={colors.primary}
+                  strokeWidth={1.8}
                 />
               </View>
               <Text style={[styles.dropdownValue, { color: colors.foreground }]}>
                 {selectedCategory}
               </Text>
             </View>
-            <Feather
-              name={dropdownOpen ? "chevron-up" : "chevron-down"}
-              size={18}
-              color={colors.mutedForeground}
-            />
+            {dropdownOpen ? (
+              <ChevronUp size={18} color={colors.mutedForeground} strokeWidth={1.8} />
+            ) : (
+              <ChevronDown size={18} color={colors.mutedForeground} strokeWidth={1.8} />
+            )}
           </Pressable>
 
           {dropdownOpen ? (
@@ -263,10 +264,11 @@ export function AssetForm({
                           },
                         ]}
                       >
-                        <Feather
+                        <LucideIcon
                           name={getCategoryIcon(cat)}
                           size={15}
                           color={isSelected ? colors.primary : colors.mutedForeground}
+                          strokeWidth={1.8}
                         />
                       </View>
                       <Text
@@ -286,7 +288,7 @@ export function AssetForm({
                       </Text>
                     </View>
                     {isSelected ? (
-                      <Feather name="check" size={16} color={colors.primary} />
+                      <Check size={16} color={colors.primary} strokeWidth={2} />
                     ) : null}
                   </Pressable>
                 );
@@ -362,11 +364,11 @@ export function AssetForm({
                 {STATUS_LABELS[status]}
               </Text>
             </View>
-            <Feather
-              name={statusDropdownOpen ? "chevron-up" : "chevron-down"}
-              size={18}
-              color={colors.mutedForeground}
-            />
+            {statusDropdownOpen ? (
+              <ChevronUp size={18} color={colors.mutedForeground} strokeWidth={1.8} />
+            ) : (
+              <ChevronDown size={18} color={colors.mutedForeground} strokeWidth={1.8} />
+            )}
           </Pressable>
 
           {statusDropdownOpen ? (
@@ -435,7 +437,7 @@ export function AssetForm({
                       </Text>
                     </View>
                     {isSelected ? (
-                      <Feather name="check" size={16} color={colors.primary} />
+                      <Check size={16} color={colors.primary} strokeWidth={2} />
                     ) : null}
                   </Pressable>
                 );
@@ -545,7 +547,7 @@ export function AssetForm({
           },
         ]}
       >
-        <Feather name="check" size={18} color="#FFFFFF" />
+        <Check size={18} color="#FFFFFF" strokeWidth={2.2} />
         <Text style={[styles.submitLabel, { color: "#FFFFFF", letterSpacing: 0.8, textTransform: "uppercase" }]}>
           {submitLabel}
         </Text>

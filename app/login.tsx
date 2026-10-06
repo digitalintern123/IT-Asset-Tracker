@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { AlertCircle, Eye, MapPin, Shield } from "@/components/LucideIcon";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
@@ -115,7 +115,7 @@ export default function LoginScreen() {
 
             {error ? (
               <View style={styles.errorRow}>
-                <Feather name="alert-circle" size={15} color="#FF8A8A" />
+                <AlertCircle size={15} color="#FF8A8A" strokeWidth={1.8} />
                 <Text style={styles.error}>{error}</Text>
               </View>
             ) : null}
@@ -166,7 +166,7 @@ export default function LoginScreen() {
                 },
               ]}
             >
-              <Feather name="eye" size={16} color="#D8B575" />
+              <Eye size={16} color="#D8B575" strokeWidth={1.8} />
               <Text style={styles.demoBtnText}>Explore in Demo Mode</Text>
             </Pressable>
             <Text style={styles.demoCaption}>
@@ -175,7 +175,7 @@ export default function LoginScreen() {
 
             {/* Security Note */}
             <View style={styles.securityBox}>
-              <Feather name="shield" size={14} color="#D8B575" />
+              <Shield size={14} color="#D8B575" strokeWidth={1.8} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.securityTitle}>Protected by Microsoft Entra ID</Text>
                 <Text style={styles.securityText}>
@@ -187,7 +187,7 @@ export default function LoginScreen() {
 
           {/* Network Location Indicator */}
           <View style={styles.networkBadge}>
-            <Feather name="map-pin" size={12} color="rgba(255,255,255,0.4)" />
+            <MapPin size={12} color="rgba(255,255,255,0.4)" strokeWidth={1.8} />
             <Text style={styles.networkText}>
               DEL · HYD · GOA · Airport Lounges & Terminals
             </Text>

@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Camera, CameraOff, X } from "@/components/LucideIcon";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Haptics from "expo-haptics";
 import { Stack, useRouter } from "expo-router";
@@ -139,7 +139,7 @@ function WebQRScanner({
   if (camError) {
     return (
       <View style={[styles.permWrap, { backgroundColor: colors.background }]}>
-        <Feather name="camera-off" size={32} color={colors.mutedForeground} />
+        <CameraOff size={32} color={colors.mutedForeground} strokeWidth={1.8} />
         <Text style={[styles.permTitle, { color: colors.foreground }]}>
           Camera unavailable
         </Text>
@@ -263,7 +263,7 @@ export default function ScanScreen() {
                   opacity: pressed ? 0.7 : 1,
                 })}
               >
-                <Feather name="x" size={15} color={colors.foreground} style={{ marginRight: 5 }} />
+                <X size={15} color={colors.foreground} strokeWidth={2} style={{ marginRight: 5 }} />
                 <Text
                   style={{
                     color: colors.foreground,
@@ -317,7 +317,7 @@ export default function ScanScreen() {
             ),
           }}
         />
-        <Feather name="camera" size={32} color={colors.primary} />
+        <Camera size={32} color={colors.primary} strokeWidth={1.8} />
         <Text style={[styles.permTitle, { color: colors.foreground }]}>
           Camera access needed
         </Text>
@@ -369,7 +369,7 @@ export default function ScanScreen() {
           headerTintColor: "#fff",
           headerLeft: () => (
             <Pressable onPress={() => router.back()} hitSlop={8}>
-              <Feather name="x" size={24} color="#FFFFFF" />
+              <X size={24} color="#FFFFFF" strokeWidth={2} />
             </Pressable>
           ),
         }}

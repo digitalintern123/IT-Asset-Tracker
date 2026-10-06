@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { ChevronRight, LucideIcon } from "@/components/LucideIcon";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React from "react";
@@ -39,7 +39,7 @@ export function AssetCard({ asset }: { asset: Asset }) {
           { backgroundColor: colors.secondary, borderColor: colors.border },
         ]}
       >
-        <Feather name={icon} size={20} color={colors.primary} />
+        <LucideIcon name={icon} size={20} color={colors.primary} strokeWidth={1.8} />
       </View>
       <View style={styles.body}>
         <View style={styles.header}>
@@ -66,7 +66,7 @@ export function AssetCard({ asset }: { asset: Asset }) {
           </Text>
         </View>
       </View>
-      <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+      <ChevronRight size={18} color={colors.mutedForeground} strokeWidth={1.8} />
     </Pressable>
   );
 }
