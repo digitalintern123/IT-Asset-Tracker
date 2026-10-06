@@ -227,9 +227,21 @@ function spItemToAsset(item) {
     } catch {}
   }
 
-  // Clean notes from embedded history
+  // Extract Approval Request if pending or recorded
+  let approvalRequest = undefined;
+  if (f.Notes && typeof f.Notes === "string" && f.Notes.includes("<!-- APPROVAL:")) {
+    try {
+      const match = f.Notes.match(/<!-- APPROVAL:(.*?) -->/);
+      if (match && match[1]) {
+        approvalRequest = JSON.parse(match[1]);
+      }
+    } catch {}
+  }
+
+  // Clean notes from embedded history and approval comments
   const cleanNotes = (f.Notes || f.Description || "")
     .replace(/<!-- HISTORY:.*? -->/g, "")
+    .replace(/<!-- APPROVAL:.*? -->/g, "")
     .trim();
 
   return {
@@ -252,6 +264,7 @@ function spItemToAsset(item) {
     warrantyExpiry: f.WarrantyExpiry ? String(f.WarrantyExpiry) : null,
     notes: cleanNotes,
     assignmentHistory,
+    approvalRequest,
     etag: item["@odata.etag"] || item.eTag || null,
     version: Number(item.version || f._UIVersionString || 1),
     createdAt: String(f.Created || item.createdDateTime || new Date().toISOString()),
@@ -267,6 +280,9 @@ function assetInputToSpFields(input, assetId = null) {
   let notesWithHistory = input.notes || "";
   if (Array.isArray(input.assignmentHistory) && input.assignmentHistory.length > 0) {
     notesWithHistory = `${notesWithHistory}\n<!-- HISTORY:${JSON.stringify(input.assignmentHistory)} -->`.trim();
+  }
+  if (input.approvalRequest) {
+    notesWithHistory = `${notesWithHistory}\n<!-- APPROVAL:${JSON.stringify(input.approvalRequest)} -->`.trim();
   }
 
   const fields = {
