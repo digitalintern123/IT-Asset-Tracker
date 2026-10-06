@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Alert,
   Platform,
@@ -20,12 +20,14 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { CATEGORY_ICONS } from "@/constants/categories";
 import { useAssets } from "@/contexts/AssetContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useITAM } from "@/contexts/ITAMContext";
 import { useColors } from "@/hooks/useColors";
 import { formatRupees } from "@/lib/currency";
 import {
   openAssignmentEmail,
   sendAssetAssignedNotification,
 } from "@/lib/notify";
+import { calculateWarrantyStatus } from "@/lib/warranty";
 
 function formatDate(d?: string | null): string {
   if (!d) return "—";
@@ -47,10 +49,21 @@ export default function AssetDetailScreen() {
   const router = useRouter();
   const { getAsset, updateAsset, deleteAsset } = useAssets();
   const { user } = useAuth();
+  const { maintenance } = useITAM();
   const [editing, setEditing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const asset = id ? getAsset(id) : undefined;
+
+  const assetMaintenance = useMemo(
+    () => (id ? maintenance.filter((m) => m.assetId === id) : []),
+    [maintenance, id]
+  );
+
+  const warrantyInfo = useMemo(
+    () => (asset ? calculateWarrantyStatus(asset.warrantyExpiry) : null),
+    [asset]
+  );
 
   if (!asset) {
     return (
@@ -250,6 +263,120 @@ export default function AssetDetailScreen() {
         </View>
       </View>
 
+      {/* ITAM Lifecycle Quick Actions */}
+      {user?.permissions?.canEditAsset && (
+        <View style={{ paddingHorizontal: 20, marginTop: 12, flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+          {asset.status === "available" && (
+            <Pressable
+              onPress={() => router.push(`/operations/action?mode=assign&assetId=${asset.id}`)}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: colors.primary,
+                paddingHorizontal: 14,
+                paddingVertical: 9,
+                borderRadius: 8,
+                gap: 6,
+                opacity: pressed ? 0.85 : 1,
+              })}
+            >
+              <Feather name="log-out" size={15} color="#FFFFFF" />
+              <Text style={{ color: "#FFFFFF", fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+                Check-Out / Assign
+              </Text>
+            </Pressable>
+          )}
+
+          {asset.status === "in_use" && (
+            <>
+              <Pressable
+                onPress={() => router.push(`/operations/action?mode=checkin&assetId=${asset.id}`)}
+                style={({ pressed }) => ({
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: "#10B981",
+                  paddingHorizontal: 14,
+                  paddingVertical: 9,
+                  borderRadius: 8,
+                  gap: 6,
+                  opacity: pressed ? 0.85 : 1,
+                })}
+              >
+                <Feather name="log-in" size={15} color="#FFFFFF" />
+                <Text style={{ color: "#FFFFFF", fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+                  Check-In (Return)
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => router.push(`/operations/action?mode=transfer&assetId=${asset.id}`)}
+                style={({ pressed }) => ({
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: colors.secondary,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  paddingHorizontal: 14,
+                  paddingVertical: 9,
+                  borderRadius: 8,
+                  gap: 6,
+                  opacity: pressed ? 0.7 : 1,
+                })}
+              >
+                <Feather name="repeat" size={15} color={colors.foreground} />
+                <Text style={{ color: colors.foreground, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+                  Transfer Custody
+                </Text>
+              </Pressable>
+            </>
+          )}
+
+          {asset.status !== "maintenance" && (
+            <Pressable
+              onPress={() => router.push(`/operations/action?mode=maintenance&assetId=${asset.id}`)}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: colors.secondary,
+                borderWidth: 1,
+                borderColor: colors.border,
+                paddingHorizontal: 14,
+                paddingVertical: 9,
+                borderRadius: 8,
+                gap: 6,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Feather name="tool" size={15} color={colors.foreground} />
+              <Text style={{ color: colors.foreground, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+                Service / Repair
+              </Text>
+            </Pressable>
+          )}
+
+          {asset.status === "maintenance" && (
+            <Pressable
+              onPress={() => router.push(`/operations/action?mode=checkin&assetId=${asset.id}`)}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: "#10B981",
+                paddingHorizontal: 14,
+                paddingVertical: 9,
+                borderRadius: 8,
+                gap: 6,
+                opacity: pressed ? 0.85 : 1,
+              })}
+            >
+              <Feather name="check-circle" size={15} color="#FFFFFF" />
+              <Text style={{ color: "#FFFFFF", fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+                Complete Service & Return to Stock
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      )}
+
       <DetailGroup title="Identification" colors={colors}>
         <DetailRow label="Asset Tag (ID)" value={asset.id} colors={colors} />
         <DetailRow label="Serial number" value={asset.serialNumber || "—"} colors={colors} />
@@ -279,6 +406,114 @@ export default function AssetDetailScreen() {
           last
         />
       </DetailGroup>
+
+      {/* Warranty & SLA Group */}
+      <DetailGroup title="Warranty & SLA Protection" colors={colors}>
+        <View
+          style={[
+            styles.detailRow,
+            { borderBottomWidth: 1, borderBottomColor: colors.border },
+          ]}
+        >
+          <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>
+            Coverage Status
+          </Text>
+          <View
+            style={{
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              borderRadius: 6,
+              backgroundColor:
+                warrantyInfo?.badgeVariant === "warning"
+                  ? "#F59E0B20"
+                  : warrantyInfo?.badgeVariant === "destructive"
+                  ? "#EF444420"
+                  : "#10B98120",
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 12,
+                fontFamily: "Inter_700Bold",
+                color:
+                  warrantyInfo?.badgeVariant === "warning"
+                    ? "#F59E0B"
+                    : warrantyInfo?.badgeVariant === "destructive"
+                    ? "#EF4444"
+                    : "#10B981",
+              }}
+            >
+              {warrantyInfo?.label || "No Warranty"}
+            </Text>
+          </View>
+        </View>
+        <DetailRow
+          label="Warranty Expiry"
+          value={formatDate(asset.warrantyExpiry)}
+          colors={colors}
+        />
+        <DetailRow
+          label="Provider / Contract"
+          value={asset.warrantyDetails?.provider || "OEM Standard Support"}
+          colors={colors}
+          last
+        />
+      </DetailGroup>
+
+      {/* Maintenance History Group */}
+      {assetMaintenance.length > 0 && (
+        <DetailGroup title="Maintenance & Service History" colors={colors}>
+          {assetMaintenance.map((m, idx) => {
+            const isLast = idx === assetMaintenance.length - 1;
+            return (
+              <View
+                key={m.id}
+                style={[
+                  styles.detailRow,
+                  !isLast && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                ]}
+              >
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={[styles.detailValue, { color: colors.foreground }]}>
+                    {m.serviceType.replace("_", " ").toUpperCase()} • {m.vendor}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: colors.mutedForeground, fontFamily: "Inter_400Regular" }}>
+                    Date: {m.scheduledDate} {m.completedDate ? `• Closed: ${m.completedDate}` : ""} • Cost: {formatRupees(m.cost)}
+                  </Text>
+                  {m.issueDescription ? (
+                    <Text style={{ fontSize: 11, color: colors.mutedForeground, marginTop: 2 }}>
+                      {m.issueDescription}
+                    </Text>
+                  ) : null}
+                  {m.resolutionNotes ? (
+                    <Text style={{ fontSize: 11, color: colors.primary, fontStyle: "italic", marginTop: 2 }}>
+                      Resolution: {m.resolutionNotes}
+                    </Text>
+                  ) : null}
+                </View>
+                <View
+                  style={{
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    borderRadius: 6,
+                    backgroundColor: m.status === "completed" ? "#10B9811A" : "#F59E0B1A",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontFamily: "Inter_700Bold",
+                      color: m.status === "completed" ? "#10B981" : "#F59E0B",
+                    }}
+                  >
+                    {m.status.toUpperCase()}
+                  </Text>
+                </View>
+              </View>
+            );
+          })}
+        </DetailGroup>
+      )}
 
       {asset.assignmentHistory && asset.assignmentHistory.length > 0 ? (
         <DetailGroup title="Custody & Assignment History" colors={colors}>

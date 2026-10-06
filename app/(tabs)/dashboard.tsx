@@ -22,8 +22,10 @@ import {
   STATUS_LABELS,
 } from "@/constants/categories";
 import { useAssets } from "@/contexts/AssetContext";
+import { useITAM } from "@/contexts/ITAMContext";
 import { useColors } from "@/hooks/useColors";
 import { formatRupees } from "@/lib/currency";
+import { calculateWarrantyStatus } from "@/lib/warranty";
 import type { AssetStatus } from "@/types/asset";
 
 function formatMoney(n: number): string {
@@ -40,10 +42,23 @@ export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { assets } = useAssets();
+  const { maintenance } = useITAM();
 
   const totalValue = useMemo(
     () => assets.reduce((s, a) => s + (a.purchasePrice || 0), 0),
     [assets],
+  );
+
+  const expiringWarrantyCount = useMemo(() => {
+    return assets.filter((a) => {
+      const calc = calculateWarrantyStatus(a.warrantyExpiry);
+      return calc.status === "expiring_soon" || calc.status === "expired";
+    }).length;
+  }, [assets]);
+
+  const activeMaintenanceCount = useMemo(
+    () => maintenance.filter((m) => m.status === "in_progress" || m.status === "scheduled").length,
+    [maintenance]
   );
 
   const statusCounts = useMemo(() => {
@@ -148,6 +163,91 @@ export default function DashboardScreen() {
             icon="archive"
             tint={STATUS_COLORS.retired.dot}
           />
+        </View>
+
+        {/* ITAM Operations Radar Quick Cards */}
+        <View style={[styles.row, { marginTop: 10 }]}>
+          <Pressable
+            onPress={() => router.push("/operations")}
+            style={({ pressed }) => ({
+              flex: 1,
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 12,
+              padding: 12,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <View
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 19,
+                backgroundColor: expiringWarrantyCount > 0 ? "#F59E0B1A" : "#10B9811A",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <Feather
+                name="shield"
+                size={18}
+                color={expiringWarrantyCount > 0 ? "#F59E0B" : "#10B981"}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: colors.foreground }}>
+                {expiringWarrantyCount}
+              </Text>
+              <Text style={{ fontSize: 11, fontFamily: "Inter_500Medium", color: colors.mutedForeground }}>
+                Warranty Alerts
+              </Text>
+            </View>
+          </Pressable>
+
+          <Pressable
+            onPress={() => router.push("/operations")}
+            style={({ pressed }) => ({
+              flex: 1,
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 12,
+              padding: 12,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <View
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 19,
+                backgroundColor: activeMaintenanceCount > 0 ? "#3B82F61A" : colors.secondary,
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <Feather
+                name="tool"
+                size={18}
+                color={activeMaintenanceCount > 0 ? "#3B82F6" : colors.mutedForeground}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: colors.foreground }}>
+                {activeMaintenanceCount}
+              </Text>
+              <Text style={{ fontSize: 11, fontFamily: "Inter_500Medium", color: colors.mutedForeground }}>
+                Service Jobs
+              </Text>
+            </View>
+          </Pressable>
         </View>
 
         <Section title="Status breakdown" colors={colors}>
