@@ -137,7 +137,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (Date.now() > current.expiresAt) {
       await removeSecureTokens();
       tokensRef.current = null;
-      setUser((prev) => (prev ? { ...prev, accessToken: undefined } : null));
+      await AsyncStorage.removeItem(PROFILE_STORAGE_KEY);
+      setUser(null);
       return null;
     }
 
@@ -258,7 +259,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.warn("Session auto-purged due to 30 minutes of inactivity.");
         await removeSecureTokens();
         tokensRef.current = null;
-        setUser((prev) => (prev ? { ...prev, accessToken: undefined } : null));
+        await AsyncStorage.removeItem(PROFILE_STORAGE_KEY);
+        setUser(null);
       }, 30 * 60 * 1000); // 30 minutes
     };
 

@@ -38,6 +38,18 @@ import type {
 
 const CACHE_KEY = "@encalm/asset_cache_v3";
 
+/**
+ * True only for failures that offline queueing can actually recover from.
+ * An HTTP 4xx is a real rejection by SharePoint (bad scope, bad column,
+ * bad payload) and must surface to the user instead of being queued.
+ */
+function isRecoverableNetworkError(err: any): boolean {
+  const status = Number(err?.statusCode ?? err?.status ?? 0);
+  if (status >= 400 && status < 500) return false;
+  if (!isNetworkOnline()) return true;
+  return err?.name === "TypeError" || err?.name === "NetworkError";
+}
+
 interface CachePayload {
   lastFetched: number;
   items: Asset[];
@@ -46,7 +58,7 @@ interface CachePayload {
 export const DEMO_SAMPLE_ASSETS: Asset[] = [
   {
     id: "ENC-LAP-2026-0001",
-    spItemId: "1",
+    spItemId: "demo-1",
     name: "MacBook Pro 16\" M3",
     category: "Laptop",
     serialNumber: "C02G1234MD6R",
@@ -73,7 +85,7 @@ export const DEMO_SAMPLE_ASSETS: Asset[] = [
   },
   {
     id: "ENC-MON-2026-0002",
-    spItemId: "2",
+    spItemId: "demo-2",
     name: "Dell UltraSharp 27\" 4K",
     category: "Monitor",
     serialNumber: "CN0987654321",
@@ -91,7 +103,7 @@ export const DEMO_SAMPLE_ASSETS: Asset[] = [
   },
   {
     id: "ENC-PHN-2026-0003",
-    spItemId: "3",
+    spItemId: "demo-3",
     name: "iPhone 15 Pro",
     category: "Phone",
     serialNumber: "F2LZ7890N6T1",
@@ -186,10 +198,10 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
           setAssets(payload.items || []);
           setLastSyncedAt(payload.lastFetched || null);
         } else {
-          setAssets(DEMO_SAMPLE_ASSETS);
+          setAssets([]);
         }
       } catch {
-        setAssets(DEMO_SAMPLE_ASSETS);
+        setAssets([]);
       } finally {
         setLoaded(true);
       }
@@ -289,8 +301,11 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
     } else if (user?.isDemo) {
       setLastSyncedAt(Date.now());
       setAssets((prev) => (prev.length > 0 ? prev : DEMO_SAMPLE_ASSETS));
-    } else {
-      setAssets(DEMO_SAMPLE_ASSETS);
+    } else if (!user) {
+      // Signed out: show nothing. Demo records must never stand in for
+      // corporate data, because they carry real spItemId values (1, 2, 3)
+      // and an edit would PATCH those SharePoint list items.
+      setAssets([]);
     }
   }, [user?.accessToken, user?.isDemo, refresh]);
 
@@ -385,8 +400,12 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         await updateCache(next);
         return confirmed;
       } catch (err: any) {
-        // Enqueue offline if network failed
-        console.warn("API create failed, falling back to offline queue:", err);
+        if (!isRecoverableNetworkError(err)) {
+          console.error("API create rejected by SharePoint:", err);
+          setSyncError(err?.message || "SharePoint rejected this asset.");
+          throw err;
+        }
+        console.warn("API create failed (offline), queueing:", err);
         newAsset._syncStatus = "pending_create";
         await enqueueOfflineMutation("create", newAsset);
         const next = [newAsset, ...assets];
@@ -505,10 +524,18 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         return merged;
       } catch (err: any) {
         // Concurrency conflict detection (412 or Conflict)
-        if (err?.message?.includes("Conflict")) {
+        if (err?.statusCode === 412 || err?.message?.includes("Conflict")) {
           console.warn("Optimistic concurrency conflict detected. Reconciling...");
-          const conflict = resolveAssetConflict(updatedAsset, existing);
-          setSyncError("Notice: Changes were merged with cloud modifications.");
+          // `existing` is the pre-edit snapshot -> use it as the merge BASE.
+          // The server record comes back on the 412; if absent, fall back to
+          // the pre-edit copy and keep local edits (conflictResolver else-branch).
+          const serverAsset = (err?.serverAsset as Asset) || existing;
+          const conflict = resolveAssetConflict(updatedAsset, serverAsset, existing);
+          setSyncError(
+            conflict.hasConflict
+              ? `Conflict on: ${conflict.conflictingFields.join(", ")}. Your values were kept — please review.`
+              : "Changes merged with cloud modifications."
+          );
           const next = assets.map((a) => (matchesAsset(a, id) ? conflict.mergedAsset : a));
           setAssets(next);
           await updateCache(next);
@@ -516,6 +543,11 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         }
 
         // Network error fallback
+        if (!isRecoverableNetworkError(err)) {
+          console.error("API update rejected by SharePoint:", err);
+          setSyncError(err?.message || "SharePoint rejected this update.");
+          throw err;
+        }
         updatedAsset._syncStatus = "pending_update";
         await enqueueOfflineMutation("update", updatedAsset, existing.etag);
         const next = assets.map((a) => (matchesAsset(a, id) ? updatedAsset : a));
@@ -573,7 +605,14 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         setAssets(next);
         await updateCache(next);
       } catch (err: any) {
-        console.warn("Delete API failed, enqueuing offline delete:", err);
+        if (!isRecoverableNetworkError(err)) {
+          // Re-throw without touching local state, so the list does not show
+          // a deletion that did not happen.
+          console.error("API delete rejected by SharePoint:", err);
+          setSyncError(err?.message || "SharePoint rejected this deletion.");
+          throw err;
+        }
+        console.warn("Delete API failed (offline), enqueuing offline delete:", err);
         await enqueueOfflineMutation("delete", existing, existing.etag);
         const next = assets.filter((a) => !matchesAsset(a, id));
         setAssets(next);

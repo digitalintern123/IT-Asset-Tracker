@@ -255,7 +255,9 @@ function mapCategory(raw) {
   if (c.includes("tablet") || c.includes("ipad")) return "Tablet";
   if (c.includes("furniture") || c.includes("chair") || c.includes("desk")) return "Furniture";
   if (c.includes("equip") || c.includes("network") || c.includes("server") || c.includes("printer")) return "Equipment";
-  return "Other";
+  // Preserve a custom category the user typed rather than flattening it to "Other".
+  const original = (raw || "").trim();
+  return original || "Other";
 }
 
 /**
@@ -359,11 +361,13 @@ function assetInputToSpFields(input, assetId = null) {
     Status: input.status,
     Assignee: input.assignee || "",
     Location: input.location || "",
-    PurchaseDate: input.purchaseDate || "",
     PurchasePrice: Number(input.purchasePrice) || 0,
-    WarrantyExpiry: input.warrantyExpiry || "",
     Notes: notesWithHistory,
   };
+
+  // Date columns reject "" — omit the key entirely when there is no value.
+  if (input.purchaseDate) fields.PurchaseDate = input.purchaseDate;
+  if (input.warrantyExpiry) fields.WarrantyExpiry = input.warrantyExpiry;
 
   if (assetId) {
     fields.AssetId = assetId;
@@ -494,6 +498,18 @@ async function updateAsset(userToken, id, input, ifMatchEtag = null) {
   if (res.status === 412 || res.status === 409) {
     const err = new Error("Conflict: Asset was modified by another user (ETag mismatch).");
     err.statusCode = 412;
+    try {
+      const currentRes = await request({
+        hostname: GRAPH_HOST,
+        path: `/v1.0/sites/${siteId}/lists/${listId}/items/${id}?$expand=fields`,
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000,
+      });
+      if (currentRes.status === 200) {
+        err.serverAsset = spItemToAsset(currentRes.data);
+      }
+    } catch {}
     throw err;
   }
 

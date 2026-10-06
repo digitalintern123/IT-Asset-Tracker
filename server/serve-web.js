@@ -297,7 +297,9 @@ const server = http.createServer(async (req, res) => {
       } catch (apiErr) {
         console.error(`API Error on ${method} ${cleanUrl}:`, apiErr.message);
         const status = apiErr.statusCode || 500;
-        sendJson(res, status, { error: apiErr.message || "SharePoint API Error" });
+        const payload = { error: apiErr.message || "SharePoint API Error" };
+        if (apiErr.serverAsset) payload.data = apiErr.serverAsset;
+        sendJson(res, status, payload);
         return;
       }
     }

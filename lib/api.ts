@@ -51,7 +51,9 @@ export async function apiFetchAll(token?: string): Promise<Asset[]> {
       return await sp.fetchAll();
     }
 
-    throw new Error(`Server returned HTTP ${res.status}`);
+    const httpErr: any = new Error(`Server returned HTTP ${res.status}`);
+    httpErr.statusCode = res.status;
+    throw httpErr;
   } catch (err: any) {
     if (token) {
       const sp = await createSharePointService(token);
@@ -79,8 +81,12 @@ export async function apiCreateAsset(input: AssetInput, token?: string): Promise
       return await sp.create(input);
     }
 
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `Failed to create asset (HTTP ${res.status})`);
+    const errBody = await res.json().catch(() => ({} as any));
+    const httpErr: any = new Error(
+      errBody.error || `Failed to create asset (HTTP ${res.status})`
+    );
+    httpErr.statusCode = res.status;
+    throw httpErr;
   } catch (err: any) {
     if (token) {
       const sp = await createSharePointService(token);
@@ -109,8 +115,13 @@ export async function apiUpdateAsset(
     });
 
     if (res.status === 412 || res.status === 409) {
-      const errJson = await res.json().catch(() => ({}));
-      throw new Error(errJson.error || "Conflict: Asset was updated by another user.");
+      const errJson = await res.json().catch(() => ({} as any));
+      const conflictErr: any = new Error(
+        errJson.error || "Conflict: Asset was updated by another user."
+      );
+      conflictErr.statusCode = 412;
+      conflictErr.serverAsset = errJson.data ?? null;
+      throw conflictErr;
     }
 
     if (res.ok) {
@@ -123,8 +134,12 @@ export async function apiUpdateAsset(
       return await sp.update(id, input);
     }
 
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `Failed to update asset (HTTP ${res.status})`);
+    const errBody = await res.json().catch(() => ({} as any));
+    const httpErr: any = new Error(
+      errBody.error || `Failed to update asset (HTTP ${res.status})`
+    );
+    httpErr.statusCode = res.status;
+    throw httpErr;
   } catch (err: any) {
     if (token && !err.message?.includes("Conflict")) {
       const sp = await createSharePointService(token);
@@ -151,8 +166,12 @@ export async function apiDeleteAsset(id: string, token?: string): Promise<void> 
       return;
     }
 
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `Failed to delete asset (HTTP ${res.status})`);
+    const errBody = await res.json().catch(() => ({} as any));
+    const httpErr: any = new Error(
+      errBody.error || `Failed to delete asset (HTTP ${res.status})`
+    );
+    httpErr.statusCode = res.status;
+    throw httpErr;
   } catch (err: any) {
     if (token) {
       const sp = await createSharePointService(token);

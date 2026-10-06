@@ -21,7 +21,9 @@ function mapCategory(raw: string): AssetCategory {
   if (c.includes("tablet") || c.includes("ipad")) return "Tablet";
   if (c.includes("furniture") || c.includes("chair") || c.includes("desk")) return "Furniture";
   if (c.includes("equip") || c.includes("network") || c.includes("server") || c.includes("printer")) return "Equipment";
-  return "Other";
+  // Preserve a custom category the user typed rather than flattening it to "Other".
+  const original = (raw || "").trim();
+  return original || "Other";
 }
 
 function mapStatus(raw: string): AssetStatus {
@@ -115,11 +117,13 @@ export function toSpFields(input: AssetInput, assetId?: string): Record<string, 
     Status: input.status,
     Assignee: input.assignee || "",
     Location: input.location || "",
-    PurchaseDate: input.purchaseDate || "",
     PurchasePrice: Number(input.purchasePrice) || 0,
-    WarrantyExpiry: input.warrantyExpiry || "",
     Notes: notesWithHistory,
   };
+
+  // Date columns reject "" — omit the key entirely when there is no value.
+  if (input.purchaseDate) fields.PurchaseDate = input.purchaseDate;
+  if (input.warrantyExpiry) fields.WarrantyExpiry = input.warrantyExpiry;
 
   if (assetId) {
     fields.AssetId = assetId;

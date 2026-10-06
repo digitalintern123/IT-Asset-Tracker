@@ -62,10 +62,10 @@ export function resolveAssetConflict(
         (merged as any)[key] = localVal;
       }
     } else {
-      // Without base snapshot, differing fields are flagged
-      if (localVal !== serverVal) {
-        conflictingFields.push(key);
-      }
+      // Without a base snapshot we cannot tell who changed what.
+      // Flag the field AND keep the local edit so the user's work is not lost.
+      conflictingFields.push(key);
+      (merged as any)[key] = localVal;
     }
   }
 
