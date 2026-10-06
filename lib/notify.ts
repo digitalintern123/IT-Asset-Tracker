@@ -79,6 +79,10 @@ export async function openAssignmentEmail(
   const body = encodeURIComponent(lines);
   const url = `mailto:${encodeURIComponent(assigneeEmail)}?subject=${subject}&body=${body}`;
   try {
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.location.href = url;
+      return true;
+    }
     await Linking.openURL(url);
     return true;
   } catch {
