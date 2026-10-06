@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import React from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { CATEGORY_ICONS } from "@/constants/categories";
+import { getCategoryIcon } from "@/constants/categories";
 import { useColors } from "@/hooks/useColors";
 import type { Asset } from "@/types/asset";
 
@@ -13,7 +13,7 @@ import { StatusBadge } from "./StatusBadge";
 export function AssetCard({ asset }: { asset: Asset }) {
   const colors = useColors();
   const router = useRouter();
-  const icon = CATEGORY_ICONS[asset.category];
+  const icon = getCategoryIcon(asset.category);
 
   return (
     <Pressable

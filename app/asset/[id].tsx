@@ -19,7 +19,7 @@ import QRCode from "react-native-qrcode-svg";
 
 import { AssetForm } from "@/components/AssetForm";
 import { StatusBadge } from "@/components/StatusBadge";
-import { CATEGORY_ICONS } from "@/constants/categories";
+import { getCategoryIcon } from "@/constants/categories";
 import { useAssets } from "@/contexts/AssetContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -234,7 +234,7 @@ export default function AssetDetailScreen() {
     }
   };
 
-  const icon = CATEGORY_ICONS[asset.category];
+  const icon = getCategoryIcon(asset.category);
 
   if (editing) {
     return (
