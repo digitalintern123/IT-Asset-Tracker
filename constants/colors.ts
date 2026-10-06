@@ -1,36 +1,36 @@
 const colors = {
   light: {
-    text: "#0B1633",
+    text: "#3D3D3D",
     tint: "#CDA45E",
 
-    background: "#F7F4EC",
-    foreground: "#0B1633",
+    background: "#FAF8F5",
+    foreground: "#3D3D3D",
 
     card: "#FFFFFF",
-    cardForeground: "#0B1633",
+    cardForeground: "#1A1814",
 
     primary: "#CDA45E",
-    primaryForeground: "#1A1408",
+    primaryForeground: "#FFFFFF",
 
-    secondary: "#EFE7D3",
-    secondaryForeground: "#0B1633",
+    secondary: "#F5EEDB",
+    secondaryForeground: "#1A1814",
 
-    muted: "#ECE4D1",
-    mutedForeground: "#6B6450",
+    muted: "#EFE8DA",
+    mutedForeground: "#756D5C",
 
-    accent: "#152349",
+    accent: "#1A1814",
     accentForeground: "#FFFFFF",
 
-    destructive: "#B23A48",
+    destructive: "#C62828",
     destructiveForeground: "#FFFFFF",
 
-    border: "#E5DBC2",
-    input: "#E5DBC2",
+    border: "#EBE4D5",
+    input: "#EBE4D5",
 
-    brandNavy: "#0F1B3D",
-    brandNavyDeep: "#08102A",
+    brandNavy: "#1A1814",
+    brandNavyDeep: "#12100E",
     brandGold: "#CDA45E",
-    brandGoldSoft: "#E6C896",
+    brandGoldSoft: "#D9BA85",
   },
 
   radius: 16,

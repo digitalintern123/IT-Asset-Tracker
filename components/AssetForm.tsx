@@ -381,13 +381,19 @@ export function AssetForm({
         style={({ pressed }) => [
           styles.submit,
           {
-            backgroundColor: colors.brandNavy,
+            backgroundColor: colors.primary,
+            borderRadius: 50,
             opacity: submitting ? 0.7 : pressed ? 0.9 : 1,
+            shadowColor: colors.primary,
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.25,
+            shadowRadius: 10,
+            elevation: 4,
           },
         ]}
       >
-        <Feather name="check" size={18} color={colors.brandGoldSoft} />
-        <Text style={[styles.submitLabel, { color: "#FFFFFF" }]}>
+        <Feather name="check" size={18} color="#FFFFFF" />
+        <Text style={[styles.submitLabel, { color: "#FFFFFF", letterSpacing: 0.8, textTransform: "uppercase" }]}>
           {submitLabel}
         </Text>
       </Pressable>

@@ -924,9 +924,10 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   heroName: {
-    fontSize: 22,
-    fontFamily: "Inter_700Bold",
+    fontSize: 24,
+    fontFamily: Platform.OS === "web" ? '"Playfair Display", Georgia, serif' : "Inter_700Bold",
     textAlign: "center",
+    letterSpacing: -0.2,
   },
   heroMeta: {
     fontSize: 13,
@@ -956,12 +957,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     paddingVertical: 14,
-    borderRadius: 14,
+    borderRadius: 50,
     borderWidth: 1,
   },
   deleteLabel: {
     fontSize: 14,
     fontFamily: "Inter_600SemiBold",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
   },
   timestamp: {
     fontSize: 11,

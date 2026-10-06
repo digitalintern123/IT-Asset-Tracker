@@ -37,7 +37,14 @@ const FAVICON_HEAD_TAGS = [
   '<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=3">',
   '<link rel="icon" type="image/png" sizes="128x128" href="/favicon.png?v=3">',
   '<link rel="icon" type="image/x-icon" href="/favicon.ico?v=3">',
-  '<link rel="apple-touch-icon" sizes="192x192" href="/apple-touch-icon.png?v=3">'
+  '<link rel="apple-touch-icon" sizes="192x192" href="/apple-touch-icon.png?v=3">',
+  '<link rel="preconnect" href="https://fonts.googleapis.com">',
+  '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
+  '<link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">',
+  '<style>',
+  '  body, [class*="css-text"] { font-family: "Open Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important; letter-spacing: 0.3px; }',
+  '  .encalm-serif, h1, h2, [data-encalm-heading="true"] { font-family: "Playfair Display", Georgia, serif !important; }',
+  '</style>'
 ].join("\n");
 
 function sendFile(filePath, res) {

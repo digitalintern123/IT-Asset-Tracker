@@ -20,7 +20,7 @@ export function BrandHeader({ kicker, title, subtitle, right }: Props) {
 
   return (
     <LinearGradient
-      colors={[colors.brandNavyDeep, colors.brandNavy, "#1B2A57"]}
+      colors={[colors.brandNavyDeep, colors.brandNavy, "#2A241C"]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={[
@@ -125,15 +125,15 @@ const styles = StyleSheet.create({
   kicker: {
     fontSize: 11,
     fontFamily: "Inter_600SemiBold",
-    letterSpacing: 2,
+    letterSpacing: 2.5,
     textTransform: "uppercase",
   },
   title: {
-    fontSize: 30,
-    fontFamily: "Inter_700Bold",
+    fontSize: 32,
+    fontFamily: Platform.OS === "web" ? '"Playfair Display", Georgia, serif' : "Inter_700Bold",
     color: "#FFFFFF",
     marginTop: 4,
-    letterSpacing: -0.5,
+    letterSpacing: -0.2,
   },
   subtitle: {
     fontSize: 13,
