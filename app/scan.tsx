@@ -253,20 +253,22 @@ export default function ScanScreen() {
                 style={({ pressed }) => ({
                   flexDirection: "row",
                   alignItems: "center",
-                  paddingVertical: 6,
-                  paddingHorizontal: 10,
-                  marginRight: 16,
-                  borderRadius: 8,
-                  backgroundColor: colors.secondary,
+                  paddingVertical: 7,
+                  paddingHorizontal: 14,
+                  marginLeft: Platform.OS === "web" ? 16 : 8,
+                  borderRadius: 50,
+                  backgroundColor: colors.card,
+                  borderWidth: 1,
+                  borderColor: colors.border,
                   opacity: pressed ? 0.7 : 1,
                 })}
               >
-                <Feather name="x" size={16} color={colors.foreground} style={{ marginRight: 4 }} />
+                <Feather name="x" size={15} color={colors.foreground} style={{ marginRight: 5 }} />
                 <Text
                   style={{
                     color: colors.foreground,
-                    fontFamily: "Inter_500Medium",
-                    fontSize: 14,
+                    fontFamily: "Inter_600SemiBold",
+                    fontSize: 13,
                   }}
                 >
                   Cancel

@@ -249,25 +249,27 @@ export default function AssetDetailScreen() {
                 style={({ pressed }) => ({
                   flexDirection: "row",
                   alignItems: "center",
-                  paddingVertical: 6,
-                  paddingHorizontal: 10,
-                  marginRight: 16,
-                  borderRadius: 8,
-                  backgroundColor: Platform.OS === "web" ? colors.secondary : "transparent",
+                  paddingVertical: 7,
+                  paddingHorizontal: 14,
+                  marginLeft: Platform.OS === "web" ? 16 : 8,
+                  borderRadius: 50,
+                  backgroundColor: colors.card,
+                  borderWidth: 1,
+                  borderColor: colors.border,
                   opacity: pressed ? 0.7 : 1,
                 })}
               >
                 <Feather
                   name="x"
-                  size={16}
-                  color={Platform.OS === "web" ? colors.foreground : colors.primary}
-                  style={{ marginRight: 4 }}
+                  size={15}
+                  color={colors.foreground}
+                  style={{ marginRight: 5 }}
                 />
                 <Text
                   style={{
-                    color: Platform.OS === "web" ? colors.foreground : colors.primary,
-                    fontFamily: "Inter_500Medium",
-                    fontSize: 14,
+                    color: colors.foreground,
+                    fontFamily: "Inter_600SemiBold",
+                    fontSize: 13,
                   }}
                 >
                   Cancel
@@ -339,7 +341,14 @@ export default function AssetDetailScreen() {
           title: asset.name,
           headerLeft: undefined,
           headerRight: () => (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+                marginRight: Platform.OS === "web" ? 20 : 14,
+              }}
+            >
               {user?.permissions?.canEditAsset ? (
                 <Pressable
                   onPress={() => {
@@ -353,11 +362,13 @@ export default function AssetDetailScreen() {
                   style={({ pressed }) => ({
                     flexDirection: "row",
                     alignItems: "center",
-                    gap: 4,
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    borderRadius: 8,
-                    backgroundColor: colors.primary + "18",
+                    gap: 5,
+                    paddingHorizontal: 12,
+                    paddingVertical: 7,
+                    borderRadius: 50,
+                    backgroundColor: colors.secondary,
+                    borderWidth: 1,
+                    borderColor: colors.border,
                     opacity: pressed ? 0.7 : 1,
                   })}
                 >
@@ -381,18 +392,18 @@ export default function AssetDetailScreen() {
                   style={({ pressed }) => ({
                     flexDirection: "row",
                     alignItems: "center",
-                    gap: 4,
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    borderRadius: 8,
-                    backgroundColor: Platform.OS === "web" ? colors.secondary : "transparent",
-                    opacity: pressed ? 0.7 : 1,
+                    gap: 5,
+                    paddingHorizontal: 14,
+                    paddingVertical: 7,
+                    borderRadius: 50,
+                    backgroundColor: colors.primary,
+                    opacity: pressed ? 0.8 : 1,
                   })}
                 >
-                  <Feather name="edit-2" size={14} color={colors.primary} />
+                  <Feather name="edit-2" size={13} color="#FFFFFF" />
                   <Text
                     style={{
-                      color: colors.primary,
+                      color: "#FFFFFF",
                       fontFamily: "Inter_600SemiBold",
                       fontSize: 13,
                     }}
