@@ -63,20 +63,27 @@ function sendFile(filePath, res) {
     cacheControl = "public, max-age=3600, must-revalidate";
   }
 
+  let payload;
+  try {
+    if (extension === ".html") {
+      let content = fs.readFileSync(filePath, "utf8");
+      if (content.includes("</head>")) {
+        content = content.replace("</head>", `${FAVICON_HEAD_TAGS}\n</head>`);
+      }
+      payload = content;
+    } else {
+      payload = fs.readFileSync(filePath);
+    }
+  } catch (readErr) {
+    console.error(`Failed to read ${filePath}:`, readErr.message);
+    return false;
+  }
+
   res.writeHead(200, {
     "content-type": MIME_TYPES[extension] || "application/octet-stream",
     "cache-control": cacheControl,
   });
-
-  if (extension === ".html") {
-    let content = fs.readFileSync(filePath, "utf8");
-    if (content.includes("</head>")) {
-      content = content.replace("</head>", `${FAVICON_HEAD_TAGS}\n</head>`);
-    }
-    res.end(content);
-  } else {
-    res.end(fs.readFileSync(filePath));
-  }
+  res.end(payload);
   return true;
 }
 
