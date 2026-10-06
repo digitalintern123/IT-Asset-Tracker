@@ -54,6 +54,7 @@ export function AssetForm({
   );
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
+  const [name, setName] = useState(initial?.name ?? "");
   const [serialNumber, setSerialNumber] = useState(initial?.serialNumber ?? "");
   const [status, setStatus] = useState<AssetStatus>(initial?.status ?? "available");
   const [assignee, setAssignee] = useState(initial?.assignee ?? "");
