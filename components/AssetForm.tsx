@@ -16,6 +16,7 @@ import {
   STATUSES,
   STATUS_COLORS,
   STATUS_LABELS,
+  STATUS_COLORS,
   getCategoryIcon,
 } from "@/constants/categories";
 import { useColors } from "@/hooks/useColors";
@@ -247,7 +248,7 @@ export function AssetForm({
                         borderBottomColor: colors.border,
                       },
                       isSelected && {
-                        backgroundColor: colors.brandNavy + "18",
+                        backgroundColor: colors.primary + "18",
                       },
                       pressed && { opacity: 0.7 },
                     ]}
@@ -395,7 +396,7 @@ export function AssetForm({
                         borderBottomColor: colors.border,
                       },
                       isSelected && {
-                        backgroundColor: colors.brandNavy + "18",
+                        backgroundColor: colors.primary + "18",
                       },
                       pressed && { opacity: 0.7 },
                     ]}

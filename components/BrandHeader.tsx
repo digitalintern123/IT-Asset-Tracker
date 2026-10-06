@@ -20,7 +20,7 @@ export function BrandHeader({ kicker, title, subtitle, right }: Props) {
 
   return (
     <LinearGradient
-      colors={[colors.brandNavyDeep, colors.brandNavy, "#2A241C"]}
+      colors={[colors.brandNavyDeep, colors.brandNavy, "#1B2A57"]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={[

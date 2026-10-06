@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
     height: 8,
   },
   signInLabel: {
-    color: "#1A1814",
+    color: "#0D1730",
     fontSize: 14,
     fontFamily: "Inter_700Bold",
     letterSpacing: 0.5,
