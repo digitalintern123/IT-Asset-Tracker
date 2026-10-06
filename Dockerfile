@@ -24,6 +24,8 @@ RUN if [ ! -f web-build/index.html ]; then cp web-build/login.html web-build/ind
 # Ensure Encalm favicon and brand assets are in web-build root
 RUN cp favicon.ico web-build/favicon.ico 2>/dev/null || true
 RUN cp assets/brand/encalm-favicon.png web-build/favicon.png 2>/dev/null || true
+RUN cp assets/brand/favicon-32.png web-build/favicon-32.png 2>/dev/null || true
+RUN cp assets/brand/apple-touch-icon.png web-build/apple-touch-icon.png 2>/dev/null || true
 
 # Copy font assets into web-build/fonts/
 RUN mkdir -p web-build/fonts && cp fonts/*.ttf web-build/fonts/

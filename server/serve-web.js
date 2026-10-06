@@ -33,20 +33,43 @@ const MIME_TYPES = {
   ".map": "application/json",
 };
 
+const FAVICON_HEAD_TAGS = [
+  '<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=3">',
+  '<link rel="icon" type="image/png" sizes="128x128" href="/favicon.png?v=3">',
+  '<link rel="icon" type="image/x-icon" href="/favicon.ico?v=3">',
+  '<link rel="apple-touch-icon" sizes="192x192" href="/apple-touch-icon.png?v=3">'
+].join("\n");
+
 function sendFile(filePath, res) {
   if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
     return false;
   }
 
   const extension = path.extname(filePath).toLowerCase();
+  const basename = path.basename(filePath).toLowerCase();
+  const isFavicon = basename.includes("favicon") || basename.includes("apple-touch-icon");
+
+  let cacheControl = "public, max-age=31536000, immutable";
+  if (extension === ".html") {
+    cacheControl = "no-cache, no-store, must-revalidate";
+  } else if (isFavicon) {
+    cacheControl = "public, max-age=3600, must-revalidate";
+  }
+
   res.writeHead(200, {
     "content-type": MIME_TYPES[extension] || "application/octet-stream",
-    "cache-control":
-      extension === ".html"
-        ? "no-cache"
-        : "public, max-age=31536000, immutable",
+    "cache-control": cacheControl,
   });
-  res.end(fs.readFileSync(filePath));
+
+  if (extension === ".html") {
+    let content = fs.readFileSync(filePath, "utf8");
+    if (content.includes("</head>")) {
+      content = content.replace("</head>", `${FAVICON_HEAD_TAGS}\n</head>`);
+    }
+    res.end(content);
+  } else {
+    res.end(fs.readFileSync(filePath));
+  }
   return true;
 }
 
@@ -242,6 +265,18 @@ const server = http.createServer(async (req, res) => {
       const brandPng = path.resolve(__dirname, "..", "assets", "brand", "encalm-favicon.png");
       if (sendFile(brandPng, res)) return;
     }
+    if (cleanUrl === "/favicon-32.png") {
+      const fav32 = path.join(STATIC_ROOT, "favicon-32.png");
+      if (sendFile(fav32, res)) return;
+      const brand32 = path.resolve(__dirname, "..", "assets", "brand", "favicon-32.png");
+      if (sendFile(brand32, res)) return;
+    }
+    if (cleanUrl === "/apple-touch-icon.png" || cleanUrl === "/apple-touch-icon-precomposed.png") {
+      const touchPng = path.join(STATIC_ROOT, "apple-touch-icon.png");
+      if (sendFile(touchPng, res)) return;
+      const brandTouch = path.resolve(__dirname, "..", "assets", "brand", "apple-touch-icon.png");
+      if (sendFile(brandTouch, res)) return;
+    }
 
     // 4. Static frontend asset files
     const requestedFile = safeFilePath(req.url || "/");
@@ -272,7 +307,7 @@ const server = http.createServer(async (req, res) => {
     // 8. Safe 200 OK fallback HTML
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     res.end(
-      "<!DOCTYPE html><html><head><title>ENCALM Asset Tracker</title><link rel='icon' href='/favicon.ico'></head><body><h1>ENCALM Asset Tracker</h1><p>Starting up...</p></body></html>"
+      `<!DOCTYPE html><html><head><title>ENCALM Asset Tracker</title>${FAVICON_HEAD_TAGS}</head><body><h1>ENCALM Asset Tracker</h1><p>Starting up...</p></body></html>`
     );
   } catch (error) {
     console.error("Unhandled server error:", error);
