@@ -1,4 +1,4 @@
-export type AssetCategory =
+export type StandardCategory =
   | "Laptop"
   | "Desktop"
   | "Monitor"
@@ -7,6 +7,8 @@ export type AssetCategory =
   | "Furniture"
   | "Equipment"
   | "Other";
+
+export type AssetCategory = StandardCategory | (string & {});
 
 export type AssetStatus = "in_use" | "available" | "maintenance" | "retired";
 

@@ -1,9 +1,9 @@
 import { Feather } from "@expo/vector-icons";
-import type { AssetCategory, AssetStatus } from "@/types/asset";
+import type { AssetStatus, StandardCategory } from "@/types/asset";
 
 type FeatherIcon = React.ComponentProps<typeof Feather>["name"];
 
-export const CATEGORIES: AssetCategory[] = [
+export const CATEGORIES: StandardCategory[] = [
   "Laptop",
   "Desktop",
   "Monitor",
@@ -14,7 +14,7 @@ export const CATEGORIES: AssetCategory[] = [
   "Other",
 ];
 
-export const CATEGORY_ICONS: Record<AssetCategory, FeatherIcon> = {
+export const CATEGORY_ICONS: Record<StandardCategory, FeatherIcon> = {
   Laptop: "monitor",
   Desktop: "hard-drive",
   Monitor: "tv",
@@ -24,6 +24,11 @@ export const CATEGORY_ICONS: Record<AssetCategory, FeatherIcon> = {
   Equipment: "tool",
   Other: "package",
 };
+
+export function getCategoryIcon(cat?: string | null): FeatherIcon {
+  if (!cat) return "package";
+  return (CATEGORY_ICONS as Record<string, FeatherIcon>)[cat] ?? "package";
+}
 
 export const STATUSES: AssetStatus[] = [
   "in_use",

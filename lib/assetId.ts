@@ -6,7 +6,7 @@
 
 import type { Asset, AssetCategory } from "@/types/asset";
 
-const CATEGORY_CODES: Record<AssetCategory, string> = {
+const CATEGORY_CODES: Record<string, string> = {
   Laptop: "LAP",
   Desktop: "DSK",
   Monitor: "MON",
@@ -17,6 +17,12 @@ const CATEGORY_CODES: Record<AssetCategory, string> = {
   Other: "AST",
 };
 
+export function getCategoryCode(category: string): string {
+  if (CATEGORY_CODES[category]) return CATEGORY_CODES[category];
+  const clean = (category || "").replace(/[^A-Za-z]/g, "").toUpperCase();
+  return clean.length >= 3 ? clean.slice(0, 3) : "AST";
+}
+
 /**
  * Generate next sequential stable asset ID for category.
  */
@@ -24,7 +30,7 @@ export function generateStableAssetId(
   category: AssetCategory,
   existingAssets: Asset[] = []
 ): string {
-  const code = CATEGORY_CODES[category] || "AST";
+  const code = getCategoryCode(category);
   const year = new Date().getFullYear();
   const prefix = `ENC-${code}-${year}-`;
 

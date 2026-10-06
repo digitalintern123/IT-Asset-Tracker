@@ -15,9 +15,10 @@ import {
   CATEGORIES,
   STATUSES,
   STATUS_LABELS,
+  getCategoryIcon,
 } from "@/constants/categories";
 import { useColors } from "@/hooks/useColors";
-import type { Asset, AssetCategory, AssetInput, AssetStatus } from "@/types/asset";
+import type { Asset, AssetInput, AssetStatus, StandardCategory } from "@/types/asset";
 
 interface AssetFormResult {
   input: AssetInput;
@@ -41,10 +42,18 @@ export function AssetForm({
 }: Props) {
   const colors = useColors();
 
-  const [name, setName] = useState(initial?.name ?? "");
-  const [category, setCategory] = useState<AssetCategory>(
-    initial?.category ?? "Laptop",
+  const isCustomInitial =
+    !!initial?.category &&
+    !CATEGORIES.filter((c) => c !== "Other").includes(initial.category as StandardCategory);
+
+  const [selectedCategory, setSelectedCategory] = useState<StandardCategory>(
+    isCustomInitial ? "Other" : ((initial?.category as StandardCategory) ?? "Laptop"),
   );
+  const [customCategory, setCustomCategory] = useState(
+    isCustomInitial ? initial?.category ?? "" : "",
+  );
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
   const [serialNumber, setSerialNumber] = useState(initial?.serialNumber ?? "");
   const [status, setStatus] = useState<AssetStatus>(initial?.status ?? "available");
   const [assignee, setAssignee] = useState(initial?.assignee ?? "");
@@ -67,6 +76,10 @@ export function AssetForm({
       setError("Name is required");
       return;
     }
+    if (selectedCategory === "Other" && !customCategory.trim()) {
+      setError("Please specify the custom category name");
+      return;
+    }
     if (status === "in_use" && !assignee.trim()) {
       setError("Assignee name is strictly required when marking asset as In Use");
       return;
@@ -79,11 +92,13 @@ export function AssetForm({
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
+    const finalCategory =
+      selectedCategory === "Other" ? customCategory.trim() : selectedCategory;
     const price = parseFloat(purchasePriceText.replace(/[^0-9.]/g, ""));
     await onSubmit({
       input: {
         name: name.trim(),
-        category,
+        category: finalCategory,
         serialNumber: serialNumber.trim(),
         status,
         assignee: assignee.trim(),
@@ -123,13 +138,137 @@ export function AssetForm({
           />
         </Field>
         <Field label="Category" colors={colors}>
-          <Chips
-            options={CATEGORIES}
-            value={category}
-            onChange={setCategory}
-            colors={colors}
-          />
+          <Pressable
+            onPress={() => setDropdownOpen((prev) => !prev)}
+            style={({ pressed }) => [
+              styles.dropdownTrigger,
+              {
+                backgroundColor: colors.card,
+                borderColor: dropdownOpen ? colors.primary : colors.border,
+                opacity: pressed ? 0.9 : 1,
+              },
+            ]}
+          >
+            <View style={styles.dropdownLeft}>
+              <View
+                style={[
+                  styles.dropdownIconWrap,
+                  { backgroundColor: colors.secondary },
+                ]}
+              >
+                <Feather
+                  name={getCategoryIcon(selectedCategory)}
+                  size={16}
+                  color={colors.primary}
+                />
+              </View>
+              <Text style={[styles.dropdownValue, { color: colors.foreground }]}>
+                {selectedCategory}
+              </Text>
+            </View>
+            <Feather
+              name={dropdownOpen ? "chevron-up" : "chevron-down"}
+              size={18}
+              color={colors.mutedForeground}
+            />
+          </Pressable>
+
+          {dropdownOpen ? (
+            <View
+              style={[
+                styles.dropdownMenu,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              {CATEGORIES.map((cat, i) => {
+                const isSelected = cat === selectedCategory;
+                return (
+                  <Pressable
+                    key={cat}
+                    onPress={() => {
+                      if (Platform.OS !== "web") {
+                        Haptics.selectionAsync();
+                      }
+                      setSelectedCategory(cat);
+                      setDropdownOpen(false);
+                    }}
+                    style={({ pressed }) => [
+                      styles.dropdownOption,
+                      i < CATEGORIES.length - 1 && {
+                        borderBottomWidth: StyleSheet.hairlineWidth,
+                        borderBottomColor: colors.border,
+                      },
+                      isSelected && {
+                        backgroundColor: colors.brandNavy + "18",
+                      },
+                      pressed && { opacity: 0.7 },
+                    ]}
+                  >
+                    <View style={styles.dropdownLeft}>
+                      <View
+                        style={[
+                          styles.dropdownIconWrap,
+                          {
+                            backgroundColor: isSelected
+                              ? colors.primary + "22"
+                              : colors.secondary,
+                          },
+                        ]}
+                      >
+                        <Feather
+                          name={getCategoryIcon(cat)}
+                          size={15}
+                          color={isSelected ? colors.primary : colors.mutedForeground}
+                        />
+                      </View>
+                      <Text
+                        style={[
+                          styles.dropdownOptionText,
+                          {
+                            color: isSelected
+                              ? colors.primary
+                              : colors.foreground,
+                            fontFamily: isSelected
+                              ? "Inter_600SemiBold"
+                              : "Inter_400Regular",
+                          },
+                        ]}
+                      >
+                        {cat}
+                      </Text>
+                    </View>
+                    {isSelected ? (
+                      <Feather name="check" size={16} color={colors.primary} />
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
         </Field>
+
+        {selectedCategory === "Other" ? (
+          <Field label="Specify custom category *" colors={colors}>
+            <TextInput
+              value={customCategory}
+              onChangeText={setCustomCategory}
+              placeholder="e.g. Projector, POS Terminal, Biometric Reader"
+              placeholderTextColor={colors.mutedForeground}
+              style={inputStyle}
+              autoFocus={!initial?.category || initial.category === "Other"}
+            />
+            <Text
+              style={{
+                fontSize: 12,
+                color: colors.mutedForeground,
+                marginTop: -4,
+                marginBottom: 2,
+              }}
+            >
+              This custom category will be assigned to the asset and tracked across reports.
+            </Text>
+          </Field>
+        ) : null}
         <Field label="Serial number" colors={colors}>
           <TextInput
             value={serialNumber}
@@ -402,5 +541,46 @@ const styles = StyleSheet.create({
   error: {
     fontSize: 13,
     fontFamily: "Inter_500Medium",
+  },
+  dropdownTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  dropdownLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  dropdownIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dropdownValue: {
+    fontSize: 15,
+    fontFamily: "Inter_500Medium",
+  },
+  dropdownMenu: {
+    marginTop: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  dropdownOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  dropdownOptionText: {
+    fontSize: 14,
   },
 });
