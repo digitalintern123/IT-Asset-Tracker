@@ -33,6 +33,8 @@ export const MS_CONFIG = {
   WEB_SCOPES: baseScopes,
 
   // Configured Enterprise IT Administrators (fallback if Entra ID App Roles not assigned)
+  // Must stay in sync with the ADMIN_EMAILS environment variable on the server
+  // (server/serve-web.js), which enforces the same list on /api/assets.
   ADMIN_EMAILS: [
     "digital.intern@encalm.com",
     "admin@encalmhospitality.com",

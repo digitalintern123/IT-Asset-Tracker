@@ -15,6 +15,13 @@ const STATIC_ROOT = path.resolve(
 );
 const port = Number.parseInt(process.env.PORT || "10000", 10);
 
+// Must stay in sync with MS_CONFIG.ADMIN_EMAILS in lib/msConfig.ts.
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ||
+  "digital.intern@encalm.com,admin@encalmhospitality.com,it@encalmhospitality.com")
+  .split(",")
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
+
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
@@ -211,12 +218,6 @@ const server = http.createServer(async (req, res) => {
       const parts = cleanUrl.split("/").filter(Boolean); // ['api', 'assets', ':id']
       const assetId = parts[2] || null;
 
-      // Extract role from token
-      const ADMIN_EMAILS = [
-        "digital.intern@encalm.com",
-        "admin@encalmhospitality.com",
-        "it@encalmhospitality.com",
-      ];
       // Role and email are trusted only from a signature-verified id_token.
       // The bearer is a Graph access token, which cannot be verified here.
       let callerRole = "viewer";

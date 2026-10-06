@@ -8,8 +8,8 @@ FROM node:20-bullseye-slim AS builder
 WORKDIR /app
 
 # Install build dependencies
-COPY package.json ./
-RUN npm install --legacy-peer-deps
+COPY package.json package-lock.json ./
+RUN npm ci --legacy-peer-deps
 
 # Copy application source code
 COPY . .
