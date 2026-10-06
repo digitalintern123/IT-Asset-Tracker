@@ -73,6 +73,7 @@ export function AssetCard({ asset }: { asset: Asset }) {
 
 const styles = StyleSheet.create({
   card: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     padding: 14,

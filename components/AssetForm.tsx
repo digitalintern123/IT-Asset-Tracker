@@ -350,6 +350,9 @@ function Chips<T extends string>({
 
 const styles = StyleSheet.create({
   container: {
+    width: "100%",
+    maxWidth: 780,
+    alignSelf: "center",
     padding: 20,
     paddingBottom: 64,
     gap: 24,

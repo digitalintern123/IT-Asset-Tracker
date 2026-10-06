@@ -30,40 +30,42 @@ export function BrandHeader({ kicker, title, subtitle, right }: Props) {
         },
       ]}
     >
-      <View style={styles.brandRow}>
-        <Image
-          source={require("@/assets/brand/encalm-logo-white.png")}
-          style={styles.logo}
-          resizeMode="contain"
-        />
-        <View style={styles.headerDivider} />
-        <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <View>
-            <Text style={[styles.brandTag, { color: colors.brandGoldSoft }]}>
-              ASSET TRACKER
-            </Text>
-            <Text style={styles.brandSub}>Hospitality Operations</Text>
-          </View>
-          {user?.isDemo ? (
-            <View style={styles.demoBadge}>
-              <Text style={styles.demoBadgeText}>DEMO</Text>
+      <View style={styles.inner}>
+        <View style={styles.brandRow}>
+          <Image
+            source={require("@/assets/brand/encalm-logo-white.png")}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+          <View style={styles.headerDivider} />
+          <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <View>
+              <Text style={[styles.brandTag, { color: colors.brandGoldSoft }]}>
+                ASSET TRACKER
+              </Text>
+              <Text style={styles.brandSub}>Hospitality Operations</Text>
             </View>
-          ) : null}
+            {user?.isDemo ? (
+              <View style={styles.demoBadge}>
+                <Text style={styles.demoBadgeText}>DEMO</Text>
+              </View>
+            ) : null}
+          </View>
+          <View style={[styles.dotMark, { backgroundColor: colors.brandGold }]} />
         </View>
-        <View style={[styles.dotMark, { backgroundColor: colors.brandGold }]} />
-      </View>
 
-      <View style={styles.titleRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.kicker, { color: colors.brandGoldSoft }]}>
-            {kicker}
-          </Text>
-          <Text style={styles.title}>{title}</Text>
-          {subtitle ? (
-            <Text style={styles.subtitle}>{subtitle}</Text>
-          ) : null}
+        <View style={styles.titleRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.kicker, { color: colors.brandGoldSoft }]}>
+              {kicker}
+            </Text>
+            <Text style={styles.title}>{title}</Text>
+            {subtitle ? (
+              <Text style={styles.subtitle}>{subtitle}</Text>
+            ) : null}
+          </View>
+          {right}
         </View>
-        {right}
       </View>
     </LinearGradient>
   );
@@ -75,6 +77,11 @@ const styles = StyleSheet.create({
     paddingBottom: 22,
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
+  },
+  inner: {
+    width: "100%",
+    maxWidth: 1180,
+    alignSelf: "center",
   },
   brandRow: {
     flexDirection: "row",

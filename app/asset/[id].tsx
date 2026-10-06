@@ -225,12 +225,13 @@ export default function AssetDetailScreen() {
         }}
       />
 
-      <View
-        style={[
-          styles.hero,
-          { backgroundColor: colors.card, borderColor: colors.border },
-        ]}
-      >
+      <View style={styles.contentWrap}>
+        <View
+          style={[
+            styles.hero,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
         <View
           style={[
             styles.heroIcon,
@@ -418,6 +419,7 @@ export default function AssetDetailScreen() {
       >
         Last updated {formatDate(asset.updatedAt)}
       </Text>
+      </View>
     </ScrollView>
   );
 }
@@ -493,6 +495,11 @@ function DetailRow({
 }
 
 const styles = StyleSheet.create({
+  contentWrap: {
+    width: "100%",
+    maxWidth: 860,
+    alignSelf: "center",
+  },
   centered: {
     flex: 1,
     alignItems: "center",

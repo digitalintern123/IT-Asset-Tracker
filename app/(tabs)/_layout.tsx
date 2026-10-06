@@ -8,6 +8,7 @@ import React from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 
 import { useColors } from "@/hooks/useColors";
+import { useResponsive } from "@/hooks/useResponsive";
 
 function NativeTabLayout() {
   return (
@@ -39,6 +40,8 @@ function ClassicTabLayout() {
   const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
+  const { isDesktop, isTablet } = useResponsive();
+  const isFloatingDock = isWeb && (isDesktop || isTablet);
 
   return (
     <Tabs
@@ -52,11 +55,31 @@ function ClassicTabLayout() {
         },
         tabBarStyle: {
           position: "absolute",
-          backgroundColor: isIOS ? "transparent" : colors.background,
-          borderTopWidth: isWeb ? 1 : 0,
+          backgroundColor: isIOS ? "transparent" : isFloatingDock ? colors.card : colors.background,
+          borderTopWidth: isWeb && !isFloatingDock ? 1 : 0,
           borderTopColor: colors.border,
           elevation: 0,
-          ...(isWeb ? { height: 84 } : {}),
+          ...(isWeb
+            ? isFloatingDock
+              ? {
+                  height: 64,
+                  bottom: 24,
+                  maxWidth: 480,
+                  width: "90%",
+                  left: "50%",
+                  transform: [{ translateX: -240 }],
+                  borderRadius: 24,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: 8 },
+                  shadowOpacity: 0.12,
+                  shadowRadius: 20,
+                  paddingBottom: 6,
+                  paddingTop: 6,
+                }
+              : { height: 72, paddingBottom: 10 }
+            : {}),
         },
         tabBarBackground: () =>
           isIOS ? (
@@ -69,7 +92,10 @@ function ClassicTabLayout() {
             <View
               style={[
                 StyleSheet.absoluteFill,
-                { backgroundColor: colors.background },
+                {
+                  backgroundColor: isFloatingDock ? colors.card : colors.background,
+                  borderRadius: isFloatingDock ? 24 : 0,
+                },
               ]}
             />
           ) : null,

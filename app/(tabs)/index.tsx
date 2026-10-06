@@ -21,12 +21,14 @@ import { STATUSES, STATUS_LABELS } from "@/constants/categories";
 import { useAssets } from "@/contexts/AssetContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { useResponsive } from "@/hooks/useResponsive";
 import type { AssetStatus } from "@/types/asset";
 
 type Filter = "all" | AssetStatus;
 
 export default function AssetsScreen() {
   const colors = useColors();
+  const { isDesktop } = useResponsive();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { assets, loaded } = useAssets();
@@ -110,118 +112,123 @@ export default function AssetsScreen() {
         }
       />
 
-      <View style={styles.searchWrap}>
-        <View
-          style={[
-            styles.search,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
-        >
-          <Feather name="search" size={16} color={colors.mutedForeground} />
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search by name, serial, assignee…"
-            placeholderTextColor={colors.mutedForeground}
-            style={[styles.searchInput, { color: colors.foreground }]}
-            autoCapitalize="none"
-          />
-          {query.length > 0 ? (
-            <Pressable onPress={() => setQuery("")} hitSlop={8}>
-              <Feather name="x" size={16} color={colors.mutedForeground} />
-            </Pressable>
-          ) : null}
-        </View>
+      <View style={styles.contentWrap}>
+        <View style={styles.searchWrap}>
+          <View
+            style={[
+              styles.search,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <Feather name="search" size={16} color={colors.mutedForeground} />
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search by name, serial, assignee…"
+              placeholderTextColor={colors.mutedForeground}
+              style={[styles.searchInput, { color: colors.foreground }]}
+              autoCapitalize="none"
+            />
+            {query.length > 0 ? (
+              <Pressable onPress={() => setQuery("")} hitSlop={8}>
+                <Feather name="x" size={16} color={colors.mutedForeground} />
+              </Pressable>
+            ) : null}
+          </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filtersRow}
-        >
-          {filters.map((f) => {
-            const active = f.key === filter;
-            return (
-              <Pressable
-                key={f.key}
-                onPress={() => {
-                  if (Platform.OS !== "web") {
-                    Haptics.selectionAsync();
-                  }
-                  setFilter(f.key);
-                }}
-                style={[
-                  styles.filterChip,
-                  {
-                    backgroundColor: active ? colors.brandNavy : colors.card,
-                    borderColor: active ? colors.brandNavy : colors.border,
-                  },
-                ]}
-              >
-                <Text
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filtersRow}
+          >
+            {filters.map((f) => {
+              const active = f.key === filter;
+              return (
+                <Pressable
+                  key={f.key}
+                  onPress={() => {
+                    if (Platform.OS !== "web") {
+                      Haptics.selectionAsync();
+                    }
+                    setFilter(f.key);
+                  }}
                   style={[
-                    styles.filterLabel,
+                    styles.filterChip,
                     {
-                      color: active ? colors.brandGoldSoft : colors.foreground,
-                    },
-                  ]}
-                >
-                  {f.label}
-                </Text>
-                <View
-                  style={[
-                    styles.countPill,
-                    {
-                      backgroundColor: active
-                        ? "rgba(205,164,94,0.20)"
-                        : colors.secondary,
+                      backgroundColor: active ? colors.brandNavy : colors.card,
+                      borderColor: active ? colors.brandNavy : colors.border,
                     },
                   ]}
                 >
                   <Text
                     style={[
-                      styles.countText,
+                      styles.filterLabel,
                       {
-                        color: active
-                          ? colors.brandGoldSoft
-                          : colors.mutedForeground,
+                        color: active ? colors.brandGoldSoft : colors.foreground,
                       },
                     ]}
                   >
-                    {f.count}
+                    {f.label}
                   </Text>
-                </View>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
+                  <View
+                    style={[
+                      styles.countPill,
+                      {
+                        backgroundColor: active
+                          ? "rgba(205,164,94,0.20)"
+                          : colors.secondary,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.countText,
+                        {
+                          color: active
+                            ? colors.brandGoldSoft
+                            : colors.mutedForeground,
+                        },
+                      ]}
+                    >
+                      {f.count}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
 
-      <FlatList
-        data={filtered}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <AssetCard asset={item} />}
-        ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-        contentContainerStyle={{
-          padding: 20,
-          paddingTop: 4,
-          paddingBottom: insets.bottom + 100,
-        }}
-        ListEmptyComponent={
-          loaded ? (
-            <EmptyState
-              icon={query || filter !== "all" ? "search" : "package"}
-              title={
-                query || filter !== "all" ? "No matches" : "No assets yet"
-              }
-              message={
-                query || filter !== "all"
-                  ? "Try a different search or filter."
-                  : "Tap the + button to add your first asset."
-              }
-            />
-          ) : null
-        }
-      />
+        <FlatList
+          key={isDesktop ? "grid-2" : "grid-1"}
+          numColumns={isDesktop ? 2 : 1}
+          columnWrapperStyle={isDesktop ? { gap: 12 } : undefined}
+          data={filtered}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => <AssetCard asset={item} />}
+          ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+          contentContainerStyle={{
+            padding: 20,
+            paddingTop: 4,
+            paddingBottom: insets.bottom + 100,
+          }}
+          ListEmptyComponent={
+            loaded ? (
+              <EmptyState
+                icon={query || filter !== "all" ? "search" : "package"}
+                title={
+                  query || filter !== "all" ? "No matches" : "No assets yet"
+                }
+                message={
+                  query || filter !== "all"
+                    ? "Try a different search or filter."
+                    : "Tap the + button to add your first asset."
+                }
+              />
+            ) : null
+          }
+        />
+      </View>
     </View>
   );
 }
@@ -229,6 +236,12 @@ export default function AssetsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  contentWrap: {
+    flex: 1,
+    width: "100%",
+    maxWidth: 1180,
+    alignSelf: "center",
   },
   iconBtn: {
     width: 42,

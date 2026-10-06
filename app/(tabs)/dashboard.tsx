@@ -23,6 +23,7 @@ import {
 } from "@/constants/categories";
 import { useAssets } from "@/contexts/AssetContext";
 import { useColors } from "@/hooks/useColors";
+import { useResponsive } from "@/hooks/useResponsive";
 import { formatRupees } from "@/lib/currency";
 import type { AssetStatus } from "@/types/asset";
 
@@ -87,6 +88,7 @@ export default function DashboardScreen() {
     [assets],
   );
 
+  const { isDesktop } = useResponsive();
   const total = assets.length || 1;
 
   return (
@@ -101,56 +103,59 @@ export default function DashboardScreen() {
           subtitle="Live snapshot of your inventory"
         />
 
-        <View style={styles.heroWrap}>
-          <LinearGradient
-            colors={[colors.brandGold, "#B98A45"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.hero}
-          >
-            <View style={styles.heroDecorCircle} />
-            <View style={styles.heroDecorCircle2} />
-            <Text style={styles.heroLabel}>Portfolio value</Text>
-            <Text style={styles.heroValue}>{formatMoney(totalValue)}</Text>
-            <View style={styles.heroFooter}>
-              <View style={styles.heroPill}>
-                <Feather name="package" size={12} color="#FFFFFF" />
-                <Text style={styles.heroPillText}>
-                  {assets.length} assets
-                </Text>
+        <View style={styles.containerWrap}>
+          <View style={isDesktop ? styles.desktopGrid : undefined}>
+            <View style={isDesktop ? styles.desktopColLeft : undefined}>
+              <View style={isDesktop ? styles.heroWrapDesktop : styles.heroWrap}>
+                <LinearGradient
+                  colors={[colors.brandGold, "#B98A45"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.hero}
+                >
+                  <View style={styles.heroDecorCircle} />
+                  <View style={styles.heroDecorCircle2} />
+                  <Text style={styles.heroLabel}>Portfolio value</Text>
+                  <Text style={styles.heroValue}>{formatMoney(totalValue)}</Text>
+                  <View style={styles.heroFooter}>
+                    <View style={styles.heroPill}>
+                      <Feather name="package" size={12} color="#FFFFFF" />
+                      <Text style={styles.heroPillText}>
+                        {assets.length} assets
+                      </Text>
+                    </View>
+                    <View style={styles.heroPill}>
+                      <Feather name="trending-up" size={12} color="#FFFFFF" />
+                      <Text style={styles.heroPillText}>
+                        {statusCounts.in_use} in use
+                      </Text>
+                    </View>
+                  </View>
+                </LinearGradient>
               </View>
-              <View style={styles.heroPill}>
-                <Feather name="trending-up" size={12} color="#FFFFFF" />
-                <Text style={styles.heroPillText}>
-                  {statusCounts.in_use} in use
-                </Text>
+
+              <View style={isDesktop ? styles.rowDesktop : styles.row}>
+                <StatCard
+                  label="Available"
+                  value={statusCounts.available}
+                  icon="check-circle"
+                  tint={STATUS_COLORS.available.dot}
+                />
+                <StatCard
+                  label="Maintenance"
+                  value={statusCounts.maintenance}
+                  icon="tool"
+                  tint={STATUS_COLORS.maintenance.dot}
+                />
+                <StatCard
+                  label="Retired"
+                  value={statusCounts.retired}
+                  icon="archive"
+                  tint={STATUS_COLORS.retired.dot}
+                />
               </View>
-            </View>
-          </LinearGradient>
-        </View>
 
-        <View style={styles.row}>
-          <StatCard
-            label="Available"
-            value={statusCounts.available}
-            icon="check-circle"
-            tint={STATUS_COLORS.available.dot}
-          />
-          <StatCard
-            label="Maintenance"
-            value={statusCounts.maintenance}
-            icon="tool"
-            tint={STATUS_COLORS.maintenance.dot}
-          />
-          <StatCard
-            label="Retired"
-            value={statusCounts.retired}
-            icon="archive"
-            tint={STATUS_COLORS.retired.dot}
-          />
-        </View>
-
-        <Section title="Status breakdown" colors={colors}>
+              <Section title="Status breakdown" colors={colors} noPadding={isDesktop}>
           <View
             style={[
               styles.barCard,
@@ -195,7 +200,7 @@ export default function DashboardScreen() {
           </View>
         </Section>
 
-        <Section title="By category" colors={colors}>
+        <Section title="By category" colors={colors} noPadding={isDesktop}>
           <View
             style={[
               styles.listCard,
@@ -273,8 +278,15 @@ export default function DashboardScreen() {
             )}
           </View>
         </Section>
+            </View>
 
-        <Section title="Warranty expiring" colors={colors}>
+            <View style={isDesktop ? styles.desktopColRight : undefined}>
+              <Section
+                title="Warranty expiring"
+                colors={colors}
+                noPadding={isDesktop}
+                style={isDesktop ? { marginTop: 0 } : undefined}
+              >
           <View
             style={[
               styles.listCard,
@@ -355,7 +367,7 @@ export default function DashboardScreen() {
           </View>
         </Section>
 
-        <Section title="Recently updated" colors={colors}>
+        <Section title="Recently updated" colors={colors} noPadding={isDesktop}>
           <View
             style={[
               styles.listCard,
@@ -408,6 +420,9 @@ export default function DashboardScreen() {
             )}
           </View>
         </Section>
+            </View>
+          </View>
+        </View>
       </ScrollView>
     </View>
   );
@@ -417,13 +432,17 @@ function Section({
   title,
   colors,
   children,
+  noPadding,
+  style,
 }: {
   title: string;
   colors: ReturnType<typeof useColors>;
   children: React.ReactNode;
+  noPadding?: boolean;
+  style?: any;
 }) {
   return (
-    <View style={{ paddingHorizontal: 20, marginTop: 24, gap: 10 }}>
+    <View style={[{ marginTop: 24, gap: 10 }, !noPadding && { paddingHorizontal: 20 }, style]}>
       <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
         {title}
       </Text>
@@ -433,9 +452,36 @@ function Section({
 }
 
 const styles = StyleSheet.create({
+  containerWrap: {
+    width: "100%",
+    maxWidth: 1180,
+    alignSelf: "center",
+  },
+  desktopGrid: {
+    flexDirection: "row",
+    gap: 24,
+    paddingHorizontal: 20,
+    marginTop: 20,
+    alignItems: "flex-start",
+  },
+  desktopColLeft: {
+    flex: 1.15,
+  },
+  desktopColRight: {
+    flex: 0.85,
+  },
   heroWrap: {
     paddingHorizontal: 20,
     marginTop: 18,
+  },
+  heroWrapDesktop: {
+    paddingHorizontal: 0,
+    marginTop: 0,
+  },
+  rowDesktop: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 14,
   },
   hero: {
     borderRadius: 24,

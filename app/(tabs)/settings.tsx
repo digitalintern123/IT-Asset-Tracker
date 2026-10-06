@@ -58,10 +58,11 @@ export default function SettingsScreen() {
         subtitle="Manage your data and connections"
       />
 
-      {user ? (
-        <View
-          style={[
-            styles.userCard,
+      <View style={styles.containerWrap}>
+        {user ? (
+          <View
+            style={[
+              styles.userCard,
             {
               backgroundColor: colors.brandNavy,
               borderColor: colors.brandGold + "55",
@@ -349,6 +350,7 @@ export default function SettingsScreen() {
           colors={colors}
         />
       </Section>
+      </View>
     </ScrollView>
   );
 }
@@ -466,6 +468,11 @@ function Row({
 }
 
 const styles = StyleSheet.create({
+  containerWrap: {
+    width: "100%",
+    maxWidth: 860,
+    alignSelf: "center",
+  },
   headerWrap: {
     paddingHorizontal: 20,
     paddingBottom: 16,
