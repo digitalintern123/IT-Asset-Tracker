@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Plus, ScanLine, Search, X } from "@/components/LucideIcon";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
@@ -85,7 +85,7 @@ export default function AssetsScreen() {
                 },
               ]}
             >
-              <Feather name="maximize" size={18} color="#FFFFFF" />
+              <ScanLine size={18} color="#FFFFFF" strokeWidth={1.8} />
             </Pressable>
             {user?.permissions?.canCreateAsset ? (
               <Pressable
@@ -105,7 +105,7 @@ export default function AssetsScreen() {
                   },
                 ]}
               >
-                <Feather name="plus" size={20} color={colors.brandNavyDeep} />
+                <Plus size={20} color={colors.brandNavyDeep} strokeWidth={2.2} />
               </Pressable>
             ) : null}
           </View>
@@ -120,7 +120,7 @@ export default function AssetsScreen() {
               { backgroundColor: colors.card, borderColor: colors.border },
             ]}
           >
-            <Feather name="search" size={16} color={colors.mutedForeground} />
+            <Search size={16} color={colors.mutedForeground} strokeWidth={1.8} />
             <TextInput
               value={query}
               onChangeText={setQuery}
@@ -131,7 +131,7 @@ export default function AssetsScreen() {
             />
             {query.length > 0 ? (
               <Pressable onPress={() => setQuery("")} hitSlop={8}>
-                <Feather name="x" size={16} color={colors.mutedForeground} />
+                <X size={16} color={colors.mutedForeground} strokeWidth={2} />
               </Pressable>
             ) : null}
           </View>

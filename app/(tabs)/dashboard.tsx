@@ -1,4 +1,3 @@
-import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React, { useMemo } from "react";
@@ -13,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandHeader } from "@/components/BrandHeader";
 import { EmptyState } from "@/components/EmptyState";
+import { LucideIcon, Package, TrendingUp } from "@/components/LucideIcon";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
@@ -119,13 +119,13 @@ export default function DashboardScreen() {
                   <Text style={styles.heroValue}>{formatMoney(totalValue)}</Text>
                   <View style={styles.heroFooter}>
                     <View style={styles.heroPill}>
-                      <Feather name="package" size={12} color="#FFFFFF" />
+                      <Package size={12} color="#FFFFFF" strokeWidth={2} />
                       <Text style={styles.heroPillText}>
                         {assets.length} assets
                       </Text>
                     </View>
                     <View style={styles.heroPill}>
-                      <Feather name="trending-up" size={12} color="#FFFFFF" />
+                      <TrendingUp size={12} color="#FFFFFF" strokeWidth={2} />
                       <Text style={styles.heroPillText}>
                         {statusCounts.in_use} in use
                       </Text>
@@ -235,7 +235,7 @@ export default function DashboardScreen() {
                         { backgroundColor: colors.secondary },
                       ]}
                     >
-                      <Feather name={icon} size={14} color={colors.accent} />
+                      <LucideIcon name={icon} size={14} color={colors.accent} strokeWidth={1.8} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <View style={styles.catTopRow}>

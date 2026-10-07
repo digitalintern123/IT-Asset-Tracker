@@ -1,4 +1,3 @@
-import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import React, { useState } from "react";
 import {
@@ -13,13 +12,14 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandHeader } from "@/components/BrandHeader";
+import { ChevronRight, Cloud, Database, LogOut, LucideIcon } from "@/components/LucideIcon";
 import { useAssets } from "@/contexts/AssetContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { UserRole, ROLE_LABELS, ROLE_DESCRIPTIONS } from "@/lib/roles";
 import { testSharePointConnection, SharePointTestResult } from "@/lib/sharepoint";
 
-type FeatherIcon = React.ComponentProps<typeof Feather>["name"];
+type LucideIconName = string;
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -104,7 +104,7 @@ export default function SettingsScreen() {
               },
             ]}
           >
-            <Feather name="log-out" size={14} color={colors.brandGoldSoft} />
+            <LogOut size={14} color={colors.brandGoldSoft} strokeWidth={1.8} />
           </Pressable>
         </View>
       ) : null}
@@ -121,7 +121,11 @@ export default function SettingsScreen() {
             { backgroundColor: user ? colors.primary + "1F" : colors.muted },
           ]}
         >
-          <Feather name={user ? "cloud" : "database"} size={20} color={user ? colors.primary : colors.mutedForeground} />
+          {user ? (
+            <Cloud size={20} color={colors.primary} strokeWidth={1.8} />
+          ) : (
+            <Database size={20} color={colors.mutedForeground} strokeWidth={1.8} />
+          )}
         </View>
         <View style={{ flex: 1 }}>
           <Text style={[styles.summaryTitle, { color: colors.foreground }]}>
@@ -391,7 +395,7 @@ export default function SettingsScreen() {
             sublabel="Sign in to access real Encalm SharePoint inventory"
             colors={colors}
             onPress={() => signOut()}
-            right={<Feather name="chevron-right" size={16} color={colors.primary} />}
+            right={<ChevronRight size={16} color={colors.primary} strokeWidth={1.8} />}
           />
         ) : null}
         {user ? (
@@ -483,7 +487,7 @@ function Row({
   right,
   destructive,
 }: {
-  icon: FeatherIcon;
+  icon: LucideIconName;
   label: string;
   sublabel?: string;
   colors: ReturnType<typeof useColors>;
@@ -525,7 +529,7 @@ function Row({
           { backgroundColor: colors.secondary },
         ]}
       >
-        <Feather name={icon} size={16} color={tint} />
+        <LucideIcon name={icon} size={16} color={tint} strokeWidth={1.8} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={[styles.rowLabel, { color: tint }]}>{label}</Text>
@@ -542,10 +546,10 @@ function Row({
       </View>
       {right ??
         (onPress ? (
-          <Feather
-            name="chevron-right"
+          <ChevronRight
             size={18}
             color={colors.mutedForeground}
+            strokeWidth={1.8}
           />
         ) : null)}
     </Wrapper>

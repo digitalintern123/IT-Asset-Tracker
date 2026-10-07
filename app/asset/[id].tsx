@@ -1,4 +1,3 @@
-import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
@@ -18,6 +17,17 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import QRCode from "react-native-qrcode-svg";
 
 import { AssetForm } from "@/components/AssetForm";
+import {
+  AlertCircle,
+  Check,
+  LucideIcon,
+  Pencil,
+  ShieldAlert,
+  ShieldOff,
+  Trash2,
+  UserCheck,
+  X,
+} from "@/components/LucideIcon";
 import { StatusBadge } from "@/components/StatusBadge";
 import { getCategoryIcon } from "@/constants/categories";
 import { useAssets } from "@/contexts/AssetContext";
@@ -259,10 +269,10 @@ export default function AssetDetailScreen() {
                   opacity: pressed ? 0.7 : 1,
                 })}
               >
-                <Feather
-                  name="x"
+                <X
                   size={15}
                   color={colors.foreground}
+                  strokeWidth={2}
                   style={{ marginRight: 5 }}
                 />
                 <Text
@@ -372,7 +382,7 @@ export default function AssetDetailScreen() {
                     opacity: pressed ? 0.7 : 1,
                   })}
                 >
-                  <Feather name="user-check" size={14} color={colors.primary} />
+                  <UserCheck size={14} color={colors.primary} strokeWidth={1.8} />
                   <Text
                     style={{
                       color: colors.primary,
@@ -400,7 +410,7 @@ export default function AssetDetailScreen() {
                     opacity: pressed ? 0.8 : 1,
                   })}
                 >
-                  <Feather name="edit-2" size={13} color="#FFFFFF" />
+                  <Pencil size={13} color="#FFFFFF" strokeWidth={2} />
                   <Text
                     style={{
                       color: "#FFFFFF",
@@ -430,7 +440,7 @@ export default function AssetDetailScreen() {
             ]}
           >
             <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
-              <Feather name="alert-circle" size={20} color="#F57F17" style={{ marginTop: 2 }} />
+              <AlertCircle size={20} color="#F57F17" strokeWidth={1.8} style={{ marginTop: 2 }} />
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 13, fontFamily: "Inter_700Bold", color: "#E65100" }}>
                   APPROVAL PENDING: {asset.approvalRequest.action.toUpperCase()} REQUEST
@@ -473,7 +483,7 @@ export default function AssetDetailScreen() {
                     },
                   ]}
                 >
-                  <Feather name="x" size={14} color="#C62828" />
+                  <X size={14} color="#C62828" strokeWidth={2} />
                   <Text style={{ color: "#C62828", fontFamily: "Inter_600SemiBold", fontSize: 12 }}>
                     Reject
                   </Text>
@@ -490,7 +500,7 @@ export default function AssetDetailScreen() {
                     },
                   ]}
                 >
-                  <Feather name="check" size={14} color="#2E7D32" />
+                  <Check size={14} color="#2E7D32" strokeWidth={2} />
                   <Text style={{ color: "#2E7D32", fontFamily: "Inter_600SemiBold", fontSize: 12 }}>
                     Approve
                   </Text>
@@ -512,7 +522,7 @@ export default function AssetDetailScreen() {
             { backgroundColor: colors.primary + "1F" },
           ]}
         >
-          <Feather name={icon} size={28} color={colors.primary} />
+          <LucideIcon name={icon} size={28} color={colors.primary} strokeWidth={1.8} />
         </View>
         <Text style={[styles.heroName, { color: colors.foreground }]}>
           {asset.name}
@@ -676,11 +686,11 @@ export default function AssetDetailScreen() {
             },
           ]}
         >
-          <Feather
-            name={canDirectDelete ? "trash-2" : "shield-off"}
-            size={16}
-            color={colors.destructive}
-          />
+          {canDirectDelete ? (
+            <Trash2 size={16} color={colors.destructive} strokeWidth={1.8} />
+          ) : (
+            <ShieldOff size={16} color={colors.destructive} strokeWidth={1.8} />
+          )}
           <Text
             style={[styles.deleteLabel, { color: colors.destructive }]}
           >
@@ -711,11 +721,11 @@ export default function AssetDetailScreen() {
           <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Feather name="user-check" size={18} color={colors.primary} />
+                <UserCheck size={18} color={colors.primary} strokeWidth={1.8} />
                 <Text style={[styles.modalTitle, { color: colors.foreground }]}>Reassign Custody</Text>
               </View>
               <Pressable onPress={() => setReassignModalOpen(false)} hitSlop={8}>
-                <Feather name="x" size={20} color={colors.mutedForeground} />
+                <X size={20} color={colors.mutedForeground} strokeWidth={1.8} />
               </Pressable>
             </View>
 
@@ -794,11 +804,11 @@ export default function AssetDetailScreen() {
           <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Feather name="alert-triangle" size={18} color={colors.destructive} />
+                <ShieldAlert size={18} color={colors.destructive} strokeWidth={1.8} />
                 <Text style={[styles.modalTitle, { color: colors.foreground }]}>Request Asset Deletion</Text>
               </View>
               <Pressable onPress={() => setDeleteRequestModalOpen(false)} hitSlop={8}>
-                <Feather name="x" size={20} color={colors.mutedForeground} />
+                <X size={20} color={colors.mutedForeground} strokeWidth={1.8} />
               </Pressable>
             </View>
 

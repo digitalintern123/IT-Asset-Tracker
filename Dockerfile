@@ -45,13 +45,14 @@ if (fs.existsSync(dir)) {\
     c = c.replace(/assets\/[^"]*MaterialIcons\.[^"]*\.ttf/g, "fonts/MaterialIcons.4e85bc9ebe07e0340c9c4fc2f6c38908.ttf");\
     c = c.replace(/assets\/[^"]*Ionicons\.[^"]*\.ttf/g, "fonts/Ionicons.b4eb097d35f44ed943676fd56f6bdc51.ttf");\
     c = c.replace(/assets\/[^"]*FontAwesome\.[^"]*\.ttf/g, "fonts/FontAwesome.b06871f281fee6b241d60582ae9369b9.ttf");\
+    if (/"(?!fonts\/)[^"]*(Feather|MaterialIcons|Ionicons|FontAwesome)\.[0-9a-f]+\.ttf"/.test(c)) { console.error("UNPATCHED ICON FONT PATHS in " + file); process.exit(1); }\
     if (c === before) return;\
     fs.writeFileSync(p, c);\
     patched++;\
     console.log("Patched font paths in:", file);\
   });\
 }\
-if (patched === 0) { console.error("NO FONT PATHS MATCHED in " + dir); process.exit(1); }\
+if (patched === 0) console.log("No vector-icon font paths in bundle; nothing to patch.");\
 '
 
 # Stage 2: Runtime container (lightweight Node.js server)

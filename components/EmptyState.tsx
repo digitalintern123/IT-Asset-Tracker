@@ -1,13 +1,11 @@
-import { Feather } from "@expo/vector-icons";
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
+import { LucideIcon } from "@/components/LucideIcon";
 import { useColors } from "@/hooks/useColors";
 
-type FeatherIcon = React.ComponentProps<typeof Feather>["name"];
-
 interface Props {
-  icon?: FeatherIcon;
+  icon?: string;
   title: string;
   message?: string;
 }
@@ -22,7 +20,7 @@ export function EmptyState({ icon = "inbox", title, message }: Props) {
           { backgroundColor: colors.secondary, borderColor: colors.border },
         ]}
       >
-        <Feather name={icon} size={26} color={colors.mutedForeground} />
+        <LucideIcon name={icon} size={26} color={colors.mutedForeground} strokeWidth={1.8} />
       </View>
       <Text style={[styles.title, { color: colors.foreground }]}>{title}</Text>
       {message ? (

@@ -56,8 +56,8 @@ every build resolves the same dependency versions.
 
 The `Dockerfile` does everything: `npm ci`, the web build, copying favicons and
 `fonts/` into `web-build/`, and the font-path patch (section 4). The patch step
-fails the build if it matches no font paths, so a silently broken icon font
-cannot ship.
+fails the build if an icon-font URL is left unpatched, so a silently broken
+icon font cannot ship.
 
 Environment variables read by the server:
 
@@ -95,20 +95,24 @@ Webroot: `C:\inetpub\vhosts\tracker.encalmhospitality.com\httpdocs`
    - `.ttf` / `.json` / `.webmanifest` MIME maps
    - `allowDoubleEscaping` and a `hiddenSegments` exception (left over from the
      old pnpm layout; harmless)
-5. **Fonts (first time only)** — upload the 4 files in `fonts/` to
-   `httpdocs\fonts\`, keeping the exact hashed filenames.
-6. **Font patch (after every upload)** — section 4.
+5. **Fonts / font patch** — only needed if the bundle references
+   vector-icon fonts again (section 4).
 
 ---
 
 ## 4. Font patch
 
-The bundle references the icon fonts under
-`assets/node_modules/@expo/vector-icons/.../Fonts/`. IIS does not serve that
-path reliably, so both deploy paths rewrite those URLs to `/fonts/`.
-**Skip this and every icon renders as an empty box.**
+The app draws its icons with **Lucide** (`lucide-react-native`, SVG), so the
+current bundle references no icon fonts and the patch is a no-op. It stays as
+a safety net in case `@expo/vector-icons` is used again: those icon fonts are
+emitted under `assets/node_modules/@expo/vector-icons/.../Fonts/`, which IIS
+does not serve reliably, so the patch rewrites them to `/fonts/` (upload the 4
+files in `fonts/` to `httpdocs\fonts\` in that case). Skip it then and every
+icon renders as an empty box.
 
-- Docker: runs automatically in the `Dockerfile`.
+- Docker: runs automatically in the `Dockerfile`. It prints
+  `No vector-icon font paths in bundle; nothing to patch.` for the Lucide build,
+  and fails the build if any icon-font URL survives unpatched.
 - IIS: upload `server/patch.ps1` to `httpdocs\`, then run:
   ```powershell
   cd C:\inetpub\vhosts\tracker.encalmhospitality.com\httpdocs

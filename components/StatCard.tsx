@@ -1,15 +1,13 @@
-import { Feather } from "@expo/vector-icons";
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
+import { LucideIcon } from "@/components/LucideIcon";
 import { useColors } from "@/hooks/useColors";
-
-type FeatherIcon = React.ComponentProps<typeof Feather>["name"];
 
 interface Props {
   label: string;
   value: string | number;
-  icon: FeatherIcon;
+  icon: string;
   tint?: string;
 }
 
@@ -26,7 +24,7 @@ export function StatCard({ label, value, icon, tint }: Props) {
       <View
         style={[styles.iconWrap, { backgroundColor: accent + "1F" }]}
       >
-        <Feather name={icon} size={16} color={accent} />
+        <LucideIcon name={icon} size={16} color={accent} strokeWidth={1.8} />
       </View>
       <Text style={[styles.value, { color: colors.foreground }]}>{value}</Text>
       <Text style={[styles.label, { color: colors.mutedForeground }]}>

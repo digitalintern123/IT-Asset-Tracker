@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { ShieldOff, X } from "@/components/LucideIcon";
 import { Stack, useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Alert, Platform, Pressable, Text, View } from "react-native";
@@ -30,10 +30,10 @@ export default function NewAssetScreen() {
           padding: 24,
         }}
       >
-        <Feather
-          name="shield-off"
+        <ShieldOff
           size={48}
           color={colors.destructive}
+          strokeWidth={1.8}
           style={{ marginBottom: 16 }}
         />
         <Text
@@ -100,10 +100,10 @@ export default function NewAssetScreen() {
                 opacity: pressed ? 0.7 : 1,
               })}
             >
-              <Feather
-                name="x"
+              <X
                 size={15}
                 color={colors.foreground}
+                strokeWidth={2}
                 style={{ marginRight: 5 }}
               />
               <Text
