@@ -15,6 +15,13 @@ const STATIC_ROOT = path.resolve(
 );
 const port = Number.parseInt(process.env.PORT || "10000", 10);
 
+// Must stay in sync with MS_CONFIG.ADMIN_EMAILS in lib/msConfig.ts.
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ||
+  "digital.intern@encalm.com,admin@encalmhospitality.com,it@encalmhospitality.com")
+  .split(",")
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
+
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
@@ -63,35 +70,59 @@ function sendFile(filePath, res) {
     cacheControl = "public, max-age=3600, must-revalidate";
   }
 
+  let payload;
+  try {
+    if (extension === ".html") {
+      let content = fs.readFileSync(filePath, "utf8");
+      if (content.includes("</head>")) {
+        content = content.replace("</head>", `${FAVICON_HEAD_TAGS}\n</head>`);
+      }
+      payload = content;
+    } else {
+      payload = fs.readFileSync(filePath);
+    }
+  } catch (readErr) {
+    console.error(`Failed to read ${filePath}:`, readErr.message);
+    return false;
+  }
+
   res.writeHead(200, {
     "content-type": MIME_TYPES[extension] || "application/octet-stream",
     "cache-control": cacheControl,
   });
-
-  if (extension === ".html") {
-    let content = fs.readFileSync(filePath, "utf8");
-    if (content.includes("</head>")) {
-      content = content.replace("</head>", `${FAVICON_HEAD_TAGS}\n</head>`);
-    }
-    res.end(content);
-  } else {
-    res.end(fs.readFileSync(filePath));
-  }
+  res.end(payload);
   return true;
 }
 
 function safeFilePath(requestPath) {
-  const decodedPath = decodeURIComponent(requestPath.split("?")[0]);
+  let decodedPath;
+  try {
+    decodedPath = decodeURIComponent(requestPath.split("?")[0]);
+  } catch {
+    return null;
+  }
   const relativePath = decodedPath.replace(/^[/\\]+/, "");
   if (!relativePath) return null;
   const filePath = path.resolve(STATIC_ROOT, relativePath);
-  return filePath.startsWith(STATIC_ROOT) ? filePath : null;
+  if (filePath === STATIC_ROOT) return filePath;
+  return filePath.startsWith(STATIC_ROOT + path.sep) ? filePath : null;
 }
+
+const MAX_BODY_BYTES = 1_048_576; // 1 MB
 
 function parseBody(req) {
   return new Promise((resolve, reject) => {
     let body = "";
-    req.on("data", (chunk) => (body += chunk));
+    let size = 0;
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        req.destroy();
+        reject(new Error("Request body too large"));
+        return;
+      }
+      body += chunk;
+    });
     req.on("end", () => {
       try {
         resolve(body ? JSON.parse(body) : {});
@@ -108,7 +139,7 @@ function sendJson(res, statusCode, data) {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-ID-Token",
   });
   res.end(JSON.stringify(data));
 }
@@ -131,7 +162,7 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(204, {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-ID-Token",
       });
       res.end();
       return;
@@ -145,9 +176,11 @@ const server = http.createServer(async (req, res) => {
       cleanUrl === "/status" ||
       cleanUrl === "/api/health"
     ) {
-      sendJson(res, 200, {
-        status: "healthy",
+      const bundleOk = fs.existsSync(path.join(STATIC_ROOT, "index.html"));
+      sendJson(res, bundleOk ? 200 : 503, {
+        status: bundleOk ? "healthy" : "unhealthy",
         service: "encalm-asset-tracker",
+        staticBundle: bundleOk ? "present" : "missing",
         timestamp: Date.now(),
       });
       return;
@@ -185,38 +218,43 @@ const server = http.createServer(async (req, res) => {
       const parts = cleanUrl.split("/").filter(Boolean); // ['api', 'assets', ':id']
       const assetId = parts[2] || null;
 
-      // Extract role from token
-      const ADMIN_EMAILS = [
-        "digital.intern@encalm.com",
-        "admin@encalmhospitality.com",
-        "it@encalmhospitality.com",
-      ];
-      let callerRole = "technician";
+      // Role and email are trusted only from a signature-verified id_token.
+      // The bearer is a Graph access token, which cannot be verified here.
+      let callerRole = "viewer";
       if (userToken) {
+        let payload;
         try {
-          const b64 = userToken.split(".")[1];
-          if (b64) {
-            const raw = Buffer.from(b64.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
-            const payload = JSON.parse(raw);
-            const email = (payload.email || payload.upn || payload.preferred_username || "").toLowerCase();
-            const roles = Array.isArray(payload.roles) ? payload.roles.map((r) => r.toLowerCase()) : [];
-            if (roles.some((r) => r.includes("admin")) || ADMIN_EMAILS.includes(email)) {
-              callerRole = "admin";
-            } else if (roles.some((r) => r.includes("viewer") || r.includes("reader"))) {
-              callerRole = "viewer";
-            }
-          }
-        } catch {}
+          payload = await sharepointApi.verifyIdToken(req.headers["x-id-token"]);
+        } catch (verifyErr) {
+          console.warn(`Rejected id_token on ${method} ${cleanUrl}:`, verifyErr.message);
+          sendJson(res, 401, { error: "Unauthorized: Microsoft 365 sign-in could not be verified." });
+          return;
+        }
+        const email = (payload.email || payload.upn || payload.preferred_username || "").toLowerCase();
+        const roles = Array.isArray(payload.roles) ? payload.roles.map((r) => String(r).toLowerCase()) : [];
+        if (roles.some((r) => r.includes("admin")) || ADMIN_EMAILS.includes(email)) {
+          callerRole = "admin";
+        } else if (roles.some((r) => r.includes("technician") || r.includes("staff"))) {
+          callerRole = "technician";
+        }
       }
 
       try {
         if (method === "GET" && !assetId) {
+          if (!userToken) {
+            sendJson(res, 401, { error: "Unauthorized: Microsoft 365 sign-in required." });
+            return;
+          }
           const assets = await sharepointApi.fetchAllAssets(userToken);
           sendJson(res, 200, { data: assets, count: assets.length });
           return;
         }
 
         if (method === "POST" && !assetId) {
+          if (!userToken) {
+            sendJson(res, 401, { error: "Unauthorized: Microsoft 365 sign-in required." });
+            return;
+          }
           if (callerRole === "viewer") {
             sendJson(res, 403, { error: "Forbidden: Viewer role cannot create assets." });
             return;
@@ -228,6 +266,10 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (method === "PATCH" && assetId) {
+          if (!userToken) {
+            sendJson(res, 401, { error: "Unauthorized: Microsoft 365 sign-in required." });
+            return;
+          }
           if (callerRole === "viewer") {
             sendJson(res, 403, { error: "Forbidden: Viewer role cannot modify assets." });
             return;
@@ -240,6 +282,10 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (method === "DELETE" && assetId) {
+          if (!userToken) {
+            sendJson(res, 401, { error: "Unauthorized: Microsoft 365 sign-in required." });
+            return;
+          }
           if (callerRole !== "admin") {
             sendJson(res, 403, { error: "Forbidden: Only IT Administrators can permanently delete assets." });
             return;
@@ -254,7 +300,9 @@ const server = http.createServer(async (req, res) => {
       } catch (apiErr) {
         console.error(`API Error on ${method} ${cleanUrl}:`, apiErr.message);
         const status = apiErr.statusCode || 500;
-        sendJson(res, status, { error: apiErr.message || "SharePoint API Error" });
+        const payload = { error: apiErr.message || "SharePoint API Error" };
+        if (apiErr.serverAsset) payload.data = apiErr.serverAsset;
+        sendJson(res, status, payload);
         return;
       }
     }
@@ -291,6 +339,15 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // A request with a file extension is an asset request, not a client-side
+    // route. Returning index.html here produces a MIME-type refusal in the
+    // browser instead of an honest 404.
+    if (path.extname(cleanUrl)) {
+      res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      res.end("Not Found");
+      return;
+    }
+
     // 5. SPA Fallback: root index.html
     const indexFile = path.join(STATIC_ROOT, "index.html");
     if (sendFile(indexFile, res)) {
@@ -311,10 +368,14 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // 8. Safe 200 OK fallback HTML
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    // 8. No static bundle present — this is a broken deploy, not a healthy one.
+    console.error(`No static bundle found under ${STATIC_ROOT}`);
+    res.writeHead(503, {
+      "content-type": "text/html; charset=utf-8",
+      "retry-after": "30",
+    });
     res.end(
-      `<!DOCTYPE html><html><head><title>ENCALM Asset Tracker</title>${FAVICON_HEAD_TAGS}</head><body><h1>ENCALM Asset Tracker</h1><p>Starting up...</p></body></html>`
+      `<!DOCTYPE html><html><head><title>ENCALM Asset Tracker</title>${FAVICON_HEAD_TAGS}</head><body><h1>ENCALM Asset Tracker</h1><p>Static bundle unavailable. The web build did not complete.</p></body></html>`
     );
   } catch (error) {
     console.error("Unhandled server error:", error);

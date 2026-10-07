@@ -3,6 +3,7 @@
  * Handles server-to-server Microsoft Graph operations with zero external dependencies.
  */
 
+const crypto = require("crypto");
 const https = require("https");
 const { URL } = require("url");
 
@@ -102,6 +103,72 @@ async function getEffectiveToken(userToken) {
   throw new Error("Unauthorized: No Microsoft 365 token or client secret configured.");
 }
 
+// Tenant signing keys for id_token verification, keyed by `kid`.
+let jwksCache = new Map();
+let jwksFetchedAt = 0;
+const JWKS_MIN_REFRESH_MS = 60000;
+const CLOCK_SKEW_SEC = 300;
+
+function base64UrlDecode(segment) {
+  return Buffer.from(segment.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+}
+
+async function refreshJwks() {
+  const res = await request({
+    hostname: "login.microsoftonline.com",
+    path: `/${TENANT_ID}/discovery/v2.0/keys`,
+    method: "GET",
+    timeout: 10000,
+  });
+  if (res.status !== 200 || !Array.isArray(res.data.keys)) {
+    throw new Error(`Failed to fetch signing keys (HTTP ${res.status})`);
+  }
+  const next = new Map();
+  for (const k of res.data.keys) {
+    if (k.kty !== "RSA" || !k.kid || !k.n || !k.e) continue;
+    next.set(k.kid, crypto.createPublicKey({ key: { kty: k.kty, n: k.n, e: k.e }, format: "jwk" }));
+  }
+  jwksCache = next;
+  jwksFetchedAt = Date.now();
+}
+
+async function getSigningKey(kid) {
+  if (!jwksCache.has(kid) && Date.now() - jwksFetchedAt > JWKS_MIN_REFRESH_MS) {
+    await refreshJwks();
+  }
+  const key = jwksCache.get(kid);
+  if (!key) throw new Error("Unknown token signing key");
+  return key;
+}
+
+/**
+ * Verify an Entra ID id_token (RS256 signature, iss, aud, exp, nbf) and return its claims.
+ * The Graph access token cannot be verified by third parties, so role and email
+ * claims are only ever trusted from this verified id_token.
+ */
+async function verifyIdToken(idToken) {
+  if (!idToken || typeof idToken !== "string") throw new Error("Missing id_token");
+  const parts = idToken.split(".");
+  if (parts.length !== 3) throw new Error("Malformed id_token");
+
+  const [h, p, s] = parts;
+  const header = JSON.parse(base64UrlDecode(h).toString("utf8"));
+  if (header.alg !== "RS256" || !header.kid) throw new Error("Unsupported token algorithm");
+
+  const key = await getSigningKey(header.kid);
+  const valid = crypto.createVerify("RSA-SHA256").update(`${h}.${p}`).verify(key, base64UrlDecode(s));
+  if (!valid) throw new Error("Invalid token signature");
+
+  const payload = JSON.parse(base64UrlDecode(p).toString("utf8"));
+  const now = Math.floor(Date.now() / 1000);
+  if (payload.iss !== `https://login.microsoftonline.com/${TENANT_ID}/v2.0`) throw new Error("Invalid token issuer");
+  if (payload.aud !== CLIENT_ID) throw new Error("Invalid token audience");
+  if (typeof payload.exp !== "number" || payload.exp + CLOCK_SKEW_SEC < now) throw new Error("Token expired");
+  if (typeof payload.nbf === "number" && payload.nbf - CLOCK_SKEW_SEC > now) throw new Error("Token not yet valid");
+
+  return payload;
+}
+
 /**
  * Resolve SharePoint site ID.
  */
@@ -122,6 +189,16 @@ async function resolveSiteId(token) {
     headers: { Authorization: `Bearer ${token}` },
     timeout: 10000,
   });
+
+  if (res.status === 403 || res.status === 401) {
+    const err = new Error(
+      `Access denied reading SharePoint site (HTTP ${res.status}). The signed-in ` +
+      `account or app registration is missing Sites.ReadWrite.All or ` +
+      `Sites.Selected on ${SHAREPOINT_SITE_URL}.`
+    );
+    err.statusCode = res.status;
+    throw err;
+  }
 
   if (res.status !== 200 || !res.data.id) {
     throw new Error(`Failed to resolve site ID (HTTP ${res.status}): ${JSON.stringify(res.data)}`);
@@ -145,6 +222,16 @@ async function resolveListId(token, siteId) {
     headers: { Authorization: `Bearer ${token}` },
     timeout: 10000,
   });
+
+  if (res.status === 403 || res.status === 401) {
+    const err = new Error(
+      `Access denied reading SharePoint lists (HTTP ${res.status}). The signed-in ` +
+      `account or app registration is missing Sites.ReadWrite.All or ` +
+      `Sites.Selected on ${SHAREPOINT_SITE_URL}.`
+    );
+    err.statusCode = res.status;
+    throw err;
+  }
 
   if (res.status === 200 && res.data.value && res.data.value.length > 0) {
     cachedListId = res.data.value[0].id;
@@ -181,14 +268,18 @@ async function resolveListId(token, siteId) {
  */
 function mapCategory(raw) {
   const c = (raw || "").trim().toLowerCase();
-  if (c.includes("laptop") || c.includes("macbook") || c.includes("thinkpad")) return "Laptop";
-  if (c.includes("desktop") || c.includes("pc") || c.includes("imac")) return "Desktop";
-  if (c.includes("monitor") || c.includes("screen") || c.includes("display")) return "Monitor";
-  if (c.includes("phone") || c.includes("iphone") || c.includes("mobile")) return "Phone";
-  if (c.includes("tablet") || c.includes("ipad")) return "Tablet";
-  if (c.includes("furniture") || c.includes("chair") || c.includes("desk")) return "Furniture";
-  if (c.includes("equip") || c.includes("network") || c.includes("server") || c.includes("printer")) return "Equipment";
-  return "Other";
+  // Match on word boundaries so short keywords ("pc", "desk") do not capture
+  // unrelated custom categories such as "Epcot Kiosk" or "Desk Lamp".
+  if (/\b(laptop|macbook|thinkpad)/.test(c)) return "Laptop";
+  if (/\b(desktop|imac)|\bpc\b/.test(c)) return "Desktop";
+  if (/\b(monitor|screen|display)/.test(c)) return "Monitor";
+  if (/\b(phone|iphone|mobile|smartphone)/.test(c)) return "Phone";
+  if (/\b(tablet|ipad)/.test(c)) return "Tablet";
+  if (/\b(furniture|chair)|\bdesks?$/.test(c)) return "Furniture";
+  if (/\b(equip|network|server|printer)/.test(c)) return "Equipment";
+  // Preserve a custom category the user typed rather than flattening it to "Other".
+  const original = (raw || "").trim();
+  return original || "Other";
 }
 
 /**
@@ -196,9 +287,20 @@ function mapCategory(raw) {
  */
 function mapStatus(raw) {
   const s = (raw || "").trim().toLowerCase();
+
+  if (s === "new" || s === "new device" || s === "new_device") return "new";
+  if (s.includes("out of order")) return "retired";
+
+  // Check negations and terminal states before the substring matches below,
+  // otherwise "Not in Use" / "Unused" fall into the "use" branch.
+  if (/\b(not|un|never)\b/.test(s) || s.startsWith("un")) {
+    if (s.includes("use") || s.includes("issue") || s.includes("assign")) return "available";
+  }
+  if (s.includes("retir") || s.includes("dispos") || s.includes("written off") ||
+      s.includes("lost") || s.includes("stolen") || s.includes("scrap")) return "retired";
+  if (s.includes("maint") || s.includes("repair") || s.includes("service")) return "maintenance";
   if (s.includes("use") || s.includes("issue") || s.includes("assigned")) return "in_use";
-  if (s.includes("maint") || s.includes("repair")) return "maintenance";
-  if (s.includes("retir") || s.includes("dispos")) return "retired";
+  if (s.includes("avail") || s.includes("spare") || s.includes("stock") || s.includes("store")) return "available";
   return "available";
 }
 
@@ -239,9 +341,21 @@ function spItemToAsset(item) {
   }
 
   // Clean notes from embedded history and approval comments
+  // Extract the audit trail (report logs)
+  let events = [];
+  if (f.Notes && typeof f.Notes === "string" && f.Notes.includes("<!-- EVENTS:")) {
+    try {
+      const match = f.Notes.match(/<!-- EVENTS:(.*?) -->/);
+      if (match && match[1]) {
+        events = JSON.parse(match[1]);
+      }
+    } catch {}
+  }
+
   const cleanNotes = (f.Notes || f.Description || "")
     .replace(/<!-- HISTORY:.*? -->/g, "")
     .replace(/<!-- APPROVAL:.*? -->/g, "")
+    .replace(/<!-- EVENTS:.*? -->/g, "")
     .trim();
 
   return {
@@ -264,6 +378,7 @@ function spItemToAsset(item) {
     warrantyExpiry: f.WarrantyExpiry ? String(f.WarrantyExpiry) : null,
     notes: cleanNotes,
     assignmentHistory,
+    events,
     approvalRequest,
     etag: item["@odata.etag"] || item.eTag || null,
     version: Number(item.version || f._UIVersionString || 1),
@@ -276,13 +391,28 @@ function spItemToAsset(item) {
 /**
  * Format input fields for SharePoint write.
  */
+const MAX_STORED_EVENTS = 200;
+
+/**
+ * JSON for a <!-- KEY:... --> block in Notes. "-->" inside user text would end
+ * the comment early, so ">" is escaped (JSON.parse restores it).
+ */
+function toNotesJson(value) {
+  return JSON.stringify(value).replace(/>/g, "\\u003e");
+}
+
 function assetInputToSpFields(input, assetId = null) {
   let notesWithHistory = input.notes || "";
   if (Array.isArray(input.assignmentHistory) && input.assignmentHistory.length > 0) {
-    notesWithHistory = `${notesWithHistory}\n<!-- HISTORY:${JSON.stringify(input.assignmentHistory)} -->`.trim();
+    notesWithHistory = `${notesWithHistory}\n<!-- HISTORY:${toNotesJson(input.assignmentHistory)} -->`.trim();
   }
   if (input.approvalRequest) {
-    notesWithHistory = `${notesWithHistory}\n<!-- APPROVAL:${JSON.stringify(input.approvalRequest)} -->`.trim();
+    notesWithHistory = `${notesWithHistory}\n<!-- APPROVAL:${toNotesJson(input.approvalRequest)} -->`.trim();
+  }
+  if (Array.isArray(input.events) && input.events.length > 0) {
+    // Keep the newest events so the Notes field stays within SharePoint's limit.
+    const recent = input.events.slice(-MAX_STORED_EVENTS);
+    notesWithHistory = `${notesWithHistory}\n<!-- EVENTS:${toNotesJson(recent)} -->`.trim();
   }
 
   const fields = {
@@ -292,9 +422,10 @@ function assetInputToSpFields(input, assetId = null) {
     Status: input.status,
     Assignee: input.assignee || "",
     Location: input.location || "",
-    PurchaseDate: input.purchaseDate || "",
+    // Date columns reject "" — send null so a cleared date clears in SharePoint.
+    PurchaseDate: input.purchaseDate || null,
     PurchasePrice: Number(input.purchasePrice) || 0,
-    WarrantyExpiry: input.warrantyExpiry || "",
+    WarrantyExpiry: input.warrantyExpiry || null,
     Notes: notesWithHistory,
   };
 
@@ -427,6 +558,18 @@ async function updateAsset(userToken, id, input, ifMatchEtag = null) {
   if (res.status === 412 || res.status === 409) {
     const err = new Error("Conflict: Asset was modified by another user (ETag mismatch).");
     err.statusCode = 412;
+    try {
+      const currentRes = await request({
+        hostname: GRAPH_HOST,
+        path: `/v1.0/sites/${siteId}/lists/${listId}/items/${id}?$expand=fields`,
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000,
+      });
+      if (currentRes.status === 200) {
+        err.serverAsset = spItemToAsset(currentRes.data);
+      }
+    } catch {}
     throw err;
   }
 
@@ -451,6 +594,9 @@ async function updateAsset(userToken, id, input, ifMatchEtag = null) {
     id,
     spItemId: id,
     ...input,
+    // Carry the caller's etag forward. Dropping it silently disables
+    // If-Match on every subsequent update.
+    etag: ifMatchEtag || input.etag || null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     _syncStatus: "synced",
@@ -572,4 +718,5 @@ module.exports = {
   exchangeAuthCode,
   refreshAuthToken,
   getAppToken,
+  verifyIdToken,
 };

@@ -1,6 +1,7 @@
 /**
  * Microsoft Azure AD + SharePoint configuration.
- * Reduced least-privilege scopes (Mail.Send eliminated).
+ * Mail.Send is used to email maintenance notices and reassignment approvals
+ * automatically; it needs admin consent in Azure (see docs/DEPLOY.md).
  */
 
 const sharepointScope =
@@ -13,6 +14,8 @@ const baseScopes = [
   "email",
   "offline_access",
   "User.Read",
+  "User.ReadBasic.All", // "Assigned to" people picker (names + emails from Azure AD)
+  "Mail.Send",
   sharepointScope,
 ] as const;
 
@@ -28,16 +31,20 @@ export const MS_CONFIG = {
   // Least privilege SharePoint scope: "Sites.Selected" or "Sites.ReadWrite.All"
   SHAREPOINT_SCOPE: sharepointScope,
 
-  // Minimal scopes (Mail.Send completely removed)
   SCOPES: baseScopes,
   WEB_SCOPES: baseScopes,
 
   // Configured Enterprise IT Administrators (fallback if Entra ID App Roles not assigned)
+  // Must stay in sync with the ADMIN_EMAILS environment variable on the server
+  // (server/serve-web.js), which enforces the same list on /api/assets.
   ADMIN_EMAILS: [
     "digital.intern@encalm.com",
     "admin@encalmhospitality.com",
     "it@encalmhospitality.com",
   ],
+
+  // Receive maintenance notices (with the device's user).
+  IT_MANAGER_EMAILS: ["it@encalmhospitality.com"],
 } as const;
 
 export type MsConfig = typeof MS_CONFIG;

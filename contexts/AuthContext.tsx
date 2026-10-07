@@ -63,6 +63,17 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+// Expiry (ms) of a JWT, or Infinity if it cannot be read.
+function getJwtExpiryMs(token?: string): number {
+  try {
+    const b64 = (token || "").split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const exp = JSON.parse(atob(b64)).exp;
+    return typeof exp === "number" ? exp * 1000 : Infinity;
+  } catch {
+    return Infinity;
+  }
+}
+
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/);
   return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? parts[0]?.[1] ?? "")).toUpperCase();
@@ -86,8 +97,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (!current?.accessToken) return null;
 
-    // Check if token expires in less than 2 minutes
-    const isNearExpiry = Date.now() > current.expiresAt - 120000;
+    // Check if token expires in less than 2 minutes. The backend verifies the
+    // id_token, which can expire before the access token, so check both.
+    const expiresAt = Math.min(current.expiresAt, getJwtExpiryMs(current.idToken));
+    const isNearExpiry = Date.now() > expiresAt - 120000;
     if (!isNearExpiry) {
       return current.accessToken;
     }
@@ -99,7 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const updatedTokens: StoredTokens = {
           accessToken: refreshed.accessToken,
           refreshToken: refreshed.refreshToken || current.refreshToken,
-          idToken: refreshed.idToken,
+          idToken: refreshed.idToken || current.idToken,
           expiresAt: refreshed.expiresAt,
         };
         tokensRef.current = updatedTokens;
@@ -124,7 +137,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (Date.now() > current.expiresAt) {
       await removeSecureTokens();
       tokensRef.current = null;
-      setUser((prev) => (prev ? { ...prev, accessToken: undefined } : null));
+      await AsyncStorage.removeItem(PROFILE_STORAGE_KEY);
+      setUser(null);
       return null;
     }
 
@@ -245,7 +259,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.warn("Session auto-purged due to 30 minutes of inactivity.");
         await removeSecureTokens();
         tokensRef.current = null;
-        setUser((prev) => (prev ? { ...prev, accessToken: undefined } : null));
+        await AsyncStorage.removeItem(PROFILE_STORAGE_KEY);
+        setUser(null);
       }, 30 * 60 * 1000); // 30 minutes
     };
 

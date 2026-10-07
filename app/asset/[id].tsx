@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import QRCode from "react-native-qrcode-svg";
 
 import { AssetForm } from "@/components/AssetForm";
+import { PeoplePicker } from "@/components/PeoplePicker";
 import {
   AlertCircle,
   Check,
@@ -41,6 +42,8 @@ import {
   openReassignmentEmail,
   sendAssetAssignedNotification,
 } from "@/lib/notify";
+import { currentUserEmail } from "@/lib/mail";
+import type { Asset } from "@/types/asset";
 
 function formatDate(d?: string | null): string {
   if (!d) return "—";
@@ -53,6 +56,23 @@ function formatDate(d?: string | null): string {
   } catch {
     return d;
   }
+}
+
+/** True when a reassignment was filed for IT Admin approval instead of applied. */
+function isPendingReassign(result: Asset | undefined, requestedAssignee: string): boolean {
+  const req = result?.approvalRequest;
+  return (
+    !!req &&
+    req.status === "pending" &&
+    req.action === "reassign" &&
+    (result?.assignee || "").trim().toLowerCase() !== requestedAssignee.trim().toLowerCase()
+  );
+}
+
+function showPendingReassignNotice(newAssignee: string) {
+  const msg = `Reassignment to ${newAssignee} has been sent to IT Admin for approval. The device stays with its current user until it is approved.`;
+  if (Platform.OS === "web") window.alert(msg);
+  else Alert.alert("Sent for approval", msg);
 }
 
 export default function AssetDetailScreen() {
@@ -194,7 +214,7 @@ export default function AssetDetailScreen() {
     setReassignSubmitting(true);
     try {
       const prevAssignee = asset.assignee;
-      await reassignAsset(asset.id, {
+      const result = await reassignAsset(asset.id, {
         newAssignee: reassignName.trim(),
         assigneeEmail: reassignEmail.trim() || undefined,
         location: reassignLocation.trim() || undefined,
@@ -202,6 +222,11 @@ export default function AssetDetailScreen() {
       });
 
       setReassignModalOpen(false);
+
+      if (isPendingReassign(result, reassignName.trim())) {
+        showPendingReassignNotice(reassignName.trim());
+        return;
+      }
 
       if (reassignEmail.trim()) {
         await openReassignmentEmail(
@@ -291,13 +316,21 @@ export default function AssetDetailScreen() {
         />
         <AssetForm
           initial={asset}
+          initialAssigneeEmail={currentUserEmail(asset)}
           submitLabel="Save changes"
           submitting={submitting}
           onSubmit={async ({ input, assigneeEmail }) => {
             setSubmitting(true);
             try {
               const prev = asset;
-              const updated = await updateAsset(asset.id, input);
+              const updated = await updateAsset(asset.id, input, {
+                assigneeEmail: assigneeEmail || undefined,
+              });
+              if (isPendingReassign(updated, input.assignee)) {
+                setEditing(false);
+                showPendingReassignNotice(input.assignee);
+                return;
+              }
               const fromName = user?.name ?? "Asset Tracker";
               const newlyAssigned =
                 updated &&
@@ -467,6 +500,17 @@ export default function AssetDetailScreen() {
                 >
                   "{asset.approvalRequest.reason}"
                 </Text>
+                {asset.approvalRequest.action === "reassign" && asset.approvalRequest.pendingChanges?.assignee ? (
+                  <Text
+                    style={{
+                      fontFamily: "Inter_600SemiBold",
+                      color: "#3E2723",
+                      marginTop: 4,
+                    }}
+                  >
+                    New user: {asset.approvalRequest.pendingChanges.assignee}
+                  </Text>
+                ) : null}
               </View>
             </View>
 
@@ -673,6 +717,7 @@ export default function AssetDetailScreen() {
       ) : null}
 
       {/* DELETE / REQUEST DELETION BUTTON */}
+      {canDirectDelete || user?.permissions?.canRequestApproval ? (
       <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
         <Pressable
           onPress={handleDeletePress}
@@ -697,6 +742,7 @@ export default function AssetDetailScreen() {
           </Text>
         </Pressable>
       </View>
+      ) : null}
 
       <Text
         style={[
@@ -731,24 +777,14 @@ export default function AssetDetailScreen() {
               Transfer custody of <Text style={{ fontFamily: "Inter_600SemiBold", color: colors.foreground }}>{asset.name}</Text> ({asset.id}) to a new custodian.
             </Text>
 
-            <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>NEW CUSTODIAN NAME *</Text>
-            <TextInput
-              style={[styles.textInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
-              placeholder="e.g. Vikram Mehta"
-              placeholderTextColor={colors.mutedForeground + "88"}
-              value={reassignName}
-              onChangeText={setReassignName}
-            />
-
-            <Text style={[styles.inputLabel, { color: colors.mutedForeground, marginTop: 12 }]}>CUSTODIAN EMAIL (OPTIONAL)</Text>
-            <TextInput
-              style={[styles.textInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
-              placeholder="e.g. vikram.m@encalm.com"
-              placeholderTextColor={colors.mutedForeground + "88"}
-              value={reassignEmail}
-              onChangeText={setReassignEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
+            <PeoplePicker
+              value={{ name: reassignName, email: reassignEmail }}
+              onChange={(next) => {
+                setReassignName(next.name);
+                setReassignEmail(next.email);
+              }}
+              nameLabel="New custodian *"
+              emailLabel="Custodian email"
             />
 
             <Text style={[styles.inputLabel, { color: colors.mutedForeground, marginTop: 12 }]}>LOCATION / TERMINAL</Text>

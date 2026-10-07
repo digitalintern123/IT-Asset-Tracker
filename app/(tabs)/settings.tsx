@@ -1,4 +1,5 @@
 import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   Alert,
@@ -12,7 +13,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandHeader } from "@/components/BrandHeader";
-import { ChevronRight, Cloud, Database, LogOut, LucideIcon } from "@/components/LucideIcon";
+import { ChevronRight, Cloud, Database, FileText, LogOut, LucideIcon } from "@/components/LucideIcon";
 import { useAssets } from "@/contexts/AssetContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -25,6 +26,7 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { assets, syncing, syncError, lastSyncedAt, refresh } = useAssets();
   const { user, signOut, setDemoRole, getValidAccessToken } = useAuth();
+  const router = useRouter();
   const [testingSp, setTestingSp] = useState(false);
   const [testResult, setTestResult] = useState<SharePointTestResult | null>(null);
 
@@ -107,6 +109,32 @@ export default function SettingsScreen() {
             <LogOut size={14} color={colors.brandGoldSoft} strokeWidth={1.8} />
           </Pressable>
         </View>
+      ) : null}
+
+      {user?.role === "admin" ? (
+        <Pressable
+          onPress={() => router.push("/reports")}
+          style={({ pressed }) => [
+            styles.summary,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              marginTop: 14,
+              opacity: pressed ? 0.7 : 1,
+            },
+          ]}
+        >
+          <View style={[styles.summaryIcon, { backgroundColor: colors.primary + "1F" }]}>
+            <FileText size={20} color={colors.primary} strokeWidth={1.8} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.summaryTitle, { color: colors.foreground }]}>Report logs</Text>
+            <Text style={[styles.summarySub, { color: colors.mutedForeground }]}>
+              Device history, approvals and CSV export
+            </Text>
+          </View>
+          <ChevronRight size={18} color={colors.mutedForeground} strokeWidth={1.8} />
+        </Pressable>
       ) : null}
 
       <View

@@ -327,31 +327,3 @@ export async function signInWithMicrosoftNative(): Promise<{
   const { displayName, email } = await fetchGraphUserProfile(tokens.accessToken);
   return { tokens, email, name: displayName };
 }
-
-export async function sendEmailViaGraph(
-  accessToken: string,
-  to: string,
-  subject: string,
-  bodyHtml: string
-): Promise<boolean> {
-  try {
-    const res = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        message: {
-          subject,
-          body: { contentType: "HTML", content: bodyHtml },
-          toRecipients: [{ emailAddress: { address: to } }],
-        },
-        saveToSentItems: true,
-      }),
-    });
-    return res.status === 202;
-  } catch {
-    return false;
-  }
-}

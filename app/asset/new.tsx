@@ -126,7 +126,7 @@ export default function NewAssetScreen() {
         onSubmit={async ({ input, assigneeEmail }) => {
           setSubmitting(true);
           try {
-            const asset = await addAsset(input);
+            const asset = await addAsset(input, { assigneeEmail: assigneeEmail || undefined });
             const fromName = user?.name ?? "Asset Tracker";
             if (asset.assignee && asset.status === "in_use") {
               await sendAssetAssignedNotification(asset, fromName);

@@ -46,11 +46,20 @@ export function generateStableAssetId(
     }
   }
 
-  // If no sequence found, use count + 1 with fallback to random 4 digits
-  const nextSeq = maxSeq > 0 ? maxSeq + 1 : existingAssets.length + 1;
-  const seqPadded = String(nextSeq).padStart(4, "0");
+  // Candidate sequence: one past the highest seen for this exact prefix.
+  let nextSeq = maxSeq + 1;
 
-  return `${prefix}${seqPadded}`;
+  // Guard against collisions with any ID already present (the previous
+  // `existingAssets.length + 1` fallback could reissue a live ID after deletions).
+  // TODO: this only deduplicates within one client's view. Two users creating
+  // assets at the same time can still get the same ID; the durable fix is a
+  // server-side sequence.
+  const taken = new Set(existingAssets.map((a) => a.id));
+  while (taken.has(`${prefix}${String(nextSeq).padStart(4, "0")}`)) {
+    nextSeq++;
+  }
+
+  return `${prefix}${String(nextSeq).padStart(4, "0")}`;
 }
 
 /**
@@ -68,7 +77,7 @@ export function matchesAsset(asset: Asset, query: string): boolean {
   if (!query) return false;
   const q = query.trim().toLowerCase();
 
-  return (
+  return Boolean(
     (asset.id && asset.id.toLowerCase() === q) ||
     (asset.spItemId && asset.spItemId.toLowerCase() === q) ||
     (asset.serialNumber && asset.serialNumber.toLowerCase() === q)

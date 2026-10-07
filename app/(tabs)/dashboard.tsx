@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandHeader } from "@/components/BrandHeader";
 import { EmptyState } from "@/components/EmptyState";
-import { LucideIcon, Package, TrendingUp } from "@/components/LucideIcon";
+import { FileText, LucideIcon, Package, TrendingUp } from "@/components/LucideIcon";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
@@ -22,6 +22,7 @@ import {
   getCategoryIcon,
 } from "@/constants/categories";
 import { useAssets } from "@/contexts/AssetContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { formatRupees } from "@/lib/currency";
@@ -40,6 +41,7 @@ export default function DashboardScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { user } = useAuth();
   const { assets } = useAssets();
 
   const totalValue = useMemo(
@@ -49,6 +51,7 @@ export default function DashboardScreen() {
 
   const statusCounts = useMemo(() => {
     const counts: Record<AssetStatus, number> = {
+      new: 0,
       in_use: 0,
       available: 0,
       maintenance: 0,
@@ -136,6 +139,12 @@ export default function DashboardScreen() {
 
               <View style={isDesktop ? styles.rowDesktop : styles.row}>
                 <StatCard
+                  label={STATUS_LABELS.new}
+                  value={statusCounts.new}
+                  icon="box"
+                  tint={STATUS_COLORS.new.dot}
+                />
+                <StatCard
                   label="Available"
                   value={statusCounts.available}
                   icon="check-circle"
@@ -148,12 +157,27 @@ export default function DashboardScreen() {
                   tint={STATUS_COLORS.maintenance.dot}
                 />
                 <StatCard
-                  label="Retired"
+                  label={STATUS_LABELS.retired}
                   value={statusCounts.retired}
-                  icon="archive"
+                  icon="alert-triangle"
                   tint={STATUS_COLORS.retired.dot}
                 />
               </View>
+
+              {user?.role === "admin" ? (
+                <Pressable
+                  onPress={() => router.push("/reports")}
+                  style={({ pressed }) => [
+                    styles.reportsLink,
+                    { borderColor: colors.border, backgroundColor: colors.card, opacity: pressed ? 0.7 : 1 },
+                  ]}
+                >
+                  <FileText size={16} color={colors.primary} strokeWidth={1.8} />
+                  <Text style={[styles.reportsLinkText, { color: colors.foreground }]}>
+                    Report logs — device history, approvals and CSV export
+                  </Text>
+                </Pressable>
+              ) : null}
 
               <Section title="Status breakdown" colors={colors} noPadding={isDesktop}>
           <View
@@ -658,4 +682,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: "Inter_400Regular",
   },
+  reportsLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 12,
+  },
+  reportsLinkText: { fontFamily: "Inter_500Medium", fontSize: 13, flex: 1 },
 });

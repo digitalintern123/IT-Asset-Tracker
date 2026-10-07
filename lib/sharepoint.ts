@@ -4,6 +4,7 @@
  */
 
 import { MS_CONFIG, isMsConfigured } from "./msConfig";
+import { getCategoryCode } from "@/lib/assetId";
 import type { Asset, AssetCategory, AssetInput, AssetStatus } from "@/types/asset";
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
@@ -14,21 +15,36 @@ let cachedListId: string | null = null;
 
 function mapCategory(raw: string): AssetCategory {
   const c = (raw || "").trim().toLowerCase();
-  if (c.includes("laptop") || c.includes("macbook") || c.includes("thinkpad")) return "Laptop";
-  if (c.includes("desktop") || c.includes("pc") || c.includes("imac")) return "Desktop";
-  if (c.includes("monitor") || c.includes("screen") || c.includes("display")) return "Monitor";
-  if (c.includes("phone") || c.includes("iphone") || c.includes("mobile")) return "Phone";
-  if (c.includes("tablet") || c.includes("ipad")) return "Tablet";
-  if (c.includes("furniture") || c.includes("chair") || c.includes("desk")) return "Furniture";
-  if (c.includes("equip") || c.includes("network") || c.includes("server") || c.includes("printer")) return "Equipment";
-  return "Other";
+  // Match on word boundaries so short keywords ("pc", "desk") do not capture
+  // unrelated custom categories such as "Epcot Kiosk" or "Desk Lamp".
+  if (/\b(laptop|macbook|thinkpad)/.test(c)) return "Laptop";
+  if (/\b(desktop|imac)|\bpc\b/.test(c)) return "Desktop";
+  if (/\b(monitor|screen|display)/.test(c)) return "Monitor";
+  if (/\b(phone|iphone|mobile|smartphone)/.test(c)) return "Phone";
+  if (/\b(tablet|ipad)/.test(c)) return "Tablet";
+  if (/\b(furniture|chair)|\bdesks?$/.test(c)) return "Furniture";
+  if (/\b(equip|network|server|printer)/.test(c)) return "Equipment";
+  // Preserve a custom category the user typed rather than flattening it to "Other".
+  const original = (raw || "").trim();
+  return original || "Other";
 }
 
 function mapStatus(raw: string): AssetStatus {
   const s = (raw || "").trim().toLowerCase();
+
+  if (s === "new" || s === "new device" || s === "new_device") return "new";
+  if (s.includes("out of order")) return "retired";
+
+  // Check negations and terminal states before the substring matches below,
+  // otherwise "Not in Use" / "Unused" fall into the "use" branch.
+  if (/\b(not|un|never)\b/.test(s) || s.startsWith("un")) {
+    if (s.includes("use") || s.includes("issue") || s.includes("assign")) return "available";
+  }
+  if (s.includes("retir") || s.includes("dispos") || s.includes("written off") ||
+      s.includes("lost") || s.includes("stolen") || s.includes("scrap")) return "retired";
+  if (s.includes("maint") || s.includes("repair") || s.includes("service")) return "maintenance";
   if (s.includes("use") || s.includes("issue") || s.includes("assigned")) return "in_use";
-  if (s.includes("maint") || s.includes("repair")) return "maintenance";
-  if (s.includes("retir") || s.includes("dispos")) return "retired";
+  if (s.includes("avail") || s.includes("spare") || s.includes("stock") || s.includes("store")) return "available";
   return "available";
 }
 
@@ -65,9 +81,21 @@ export function fromSpItem(item: any): Asset {
     } catch {}
   }
 
+  // Extract the audit trail (report logs)
+  let events = [];
+  if (f.Notes && typeof f.Notes === "string" && f.Notes.includes("<!-- EVENTS:")) {
+    try {
+      const match = f.Notes.match(/<!-- EVENTS:(.*?) -->/);
+      if (match && match[1]) {
+        events = JSON.parse(match[1]);
+      }
+    } catch {}
+  }
+
   const cleanNotes = (f.Notes || f.Description || "")
     .replace(/<!-- HISTORY:.*? -->/g, "")
     .replace(/<!-- APPROVAL:.*? -->/g, "")
+    .replace(/<!-- EVENTS:.*? -->/g, "")
     .trim();
 
   return {
@@ -90,6 +118,7 @@ export function fromSpItem(item: any): Asset {
     warrantyExpiry: f.WarrantyExpiry ? String(f.WarrantyExpiry) : null,
     notes: cleanNotes,
     assignmentHistory,
+    events,
     approvalRequest,
     etag: item["@odata.etag"] || item.eTag || null,
     version: Number(item.version || f._UIVersionString || 1),
@@ -99,13 +128,28 @@ export function fromSpItem(item: any): Asset {
   };
 }
 
+const MAX_STORED_EVENTS = 200;
+
+/**
+ * JSON for a <!-- KEY:... --> block in Notes. "-->" inside user text would end
+ * the comment early, so ">" is escaped (JSON.parse restores it).
+ */
+function toNotesJson(value: unknown): string {
+  return JSON.stringify(value).replace(/>/g, "\\u003e");
+}
+
 export function toSpFields(input: AssetInput, assetId?: string): Record<string, unknown> {
   let notesWithHistory = input.notes || "";
   if (Array.isArray(input.assignmentHistory) && input.assignmentHistory.length > 0) {
-    notesWithHistory = `${notesWithHistory}\n<!-- HISTORY:${JSON.stringify(input.assignmentHistory)} -->`.trim();
+    notesWithHistory = `${notesWithHistory}\n<!-- HISTORY:${toNotesJson(input.assignmentHistory)} -->`.trim();
   }
   if (input.approvalRequest) {
-    notesWithHistory = `${notesWithHistory}\n<!-- APPROVAL:${JSON.stringify(input.approvalRequest)} -->`.trim();
+    notesWithHistory = `${notesWithHistory}\n<!-- APPROVAL:${toNotesJson(input.approvalRequest)} -->`.trim();
+  }
+  if (Array.isArray(input.events) && input.events.length > 0) {
+    // Keep the newest events so the Notes field stays within SharePoint's limit.
+    const recent = input.events.slice(-MAX_STORED_EVENTS);
+    notesWithHistory = `${notesWithHistory}\n<!-- EVENTS:${toNotesJson(recent)} -->`.trim();
   }
 
   const fields: Record<string, unknown> = {
@@ -115,9 +159,10 @@ export function toSpFields(input: AssetInput, assetId?: string): Record<string, 
     Status: input.status,
     Assignee: input.assignee || "",
     Location: input.location || "",
-    PurchaseDate: input.purchaseDate || "",
+    // Date columns reject "" — send null so a cleared date clears in SharePoint.
+    PurchaseDate: input.purchaseDate || null,
     PurchasePrice: Number(input.purchasePrice) || 0,
-    WarrantyExpiry: input.warrantyExpiry || "",
+    WarrantyExpiry: input.warrantyExpiry || null,
     Notes: notesWithHistory,
   };
 
@@ -142,6 +187,16 @@ async function resolveSiteId(token: string): Promise<string> {
     headers: { Authorization: `Bearer ${token}` },
   });
 
+  if (res.status === 403 || res.status === 401) {
+    const err: any = new Error(
+      `Access denied reading SharePoint site (HTTP ${res.status}). The signed-in ` +
+      `account is missing Sites.ReadWrite.All or Sites.Selected on ` +
+      `${MS_CONFIG.SHAREPOINT_SITE_URL}.`
+    );
+    err.statusCode = res.status;
+    throw err;
+  }
+
   if (!res.ok) {
     throw new Error(`Failed to resolve SharePoint site: HTTP ${res.status}`);
   }
@@ -158,6 +213,16 @@ async function resolveListId(token: string, siteId: string): Promise<string> {
   const res = await fetch(filterUrl, {
     headers: { Authorization: `Bearer ${token}` },
   });
+
+  if (res.status === 403 || res.status === 401) {
+    const err: any = new Error(
+      `Access denied reading SharePoint lists (HTTP ${res.status}). The signed-in ` +
+      `account is missing Sites.ReadWrite.All or Sites.Selected on ` +
+      `${MS_CONFIG.SHAREPOINT_SITE_URL}.`
+    );
+    err.statusCode = res.status;
+    throw err;
+  }
 
   if (res.ok) {
     const data = await res.json();
@@ -191,8 +256,8 @@ async function resolveListId(token: string, siteId: string): Promise<string> {
 
 export interface SharePointService {
   fetchAll: () => Promise<Asset[]>;
-  create: (input: AssetInput) => Promise<Asset>;
-  update: (spItemId: string, input: AssetInput) => Promise<Asset>;
+  create: (input: AssetInput & { id?: string }) => Promise<Asset>;
+  update: (spItemId: string, input: AssetInput, ifMatchEtag?: string) => Promise<Asset>;
   remove: (spItemId: string) => Promise<void>;
   findItemIdByAssetId: (assetId: string) => Promise<string | null>;
 }
@@ -220,11 +285,11 @@ export async function createSharePointService(
 
     while (nextUrl && pageCount < 50) {
       pageCount++;
-      const res = await fetch(nextUrl, { headers });
+      const res: Response = await fetch(nextUrl, { headers });
       if (!res.ok) {
         throw new Error(`Failed to load assets from SharePoint: HTTP ${res.status}`);
       }
-      const data = await res.json();
+      const data: any = await res.json();
       const items = (data.value || []).map(fromSpItem);
       allAssets = allAssets.concat(items);
       nextUrl = data["@odata.nextLink"] || null;
@@ -233,12 +298,12 @@ export async function createSharePointService(
     return allAssets;
   }
 
-  async function create(input: AssetInput): Promise<Asset> {
+  async function create(input: AssetInput & { id?: string }): Promise<Asset> {
     const year = new Date().getFullYear();
     const rand = Math.floor(1000 + Math.random() * 9000);
     const assetId = input.id && input.id.startsWith("ENC-")
       ? input.id
-      : `ENC-AST-${year}-${rand}`;
+      : `ENC-${getCategoryCode(input.category)}-${year}-${rand}`;
     const fields = toSpFields(input, assetId);
 
     const res = await fetch(base, {
@@ -258,14 +323,36 @@ export async function createSharePointService(
     return fromSpItem(createdItem);
   }
 
-  async function update(spItemId: string, input: AssetInput): Promise<Asset> {
+  async function update(
+    spItemId: string,
+    input: AssetInput,
+    ifMatchEtag?: string
+  ): Promise<Asset> {
     const fields = toSpFields(input);
+    const patchHeaders: Record<string, string> = { ...headers };
+    if (ifMatchEtag) patchHeaders["If-Match"] = ifMatchEtag;
 
     const res = await fetch(`${base}/${spItemId}/fields`, {
       method: "PATCH",
-      headers,
+      headers: patchHeaders,
       body: JSON.stringify(fields),
     });
+
+    if (res.status === 412 || res.status === 409) {
+      const conflictErr: any = new Error(
+        "Conflict: Asset was modified by another user (ETag mismatch)."
+      );
+      conflictErr.statusCode = 412;
+      // Attach the current SharePoint record so the caller can merge the
+      // other user's changes with this edit instead of guessing.
+      try {
+        const currentRes = await fetch(`${base}/${spItemId}?expand=fields`, { headers });
+        if (currentRes.ok) {
+          conflictErr.serverAsset = fromSpItem(await currentRes.json());
+        }
+      } catch {}
+      throw conflictErr;
+    }
 
     if (!res.ok) {
       const errBody = await res.text().catch(() => "");
@@ -286,6 +373,8 @@ export async function createSharePointService(
       id: spItemId,
       spItemId,
       ...input,
+      // Carry the caller's etag forward so the next update still sends If-Match.
+      etag: ifMatchEtag ?? undefined,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       _syncStatus: "synced",

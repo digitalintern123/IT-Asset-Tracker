@@ -11,6 +11,7 @@ export interface RolePermissions {
   canCreateAsset: boolean;
   canEditAsset: boolean;
   canDeleteAsset: boolean;
+  canRequestApproval: boolean;
   canManageSettings: boolean;
   canExportReports: boolean;
 }
@@ -20,6 +21,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
     canCreateAsset: true,
     canEditAsset: true,
     canDeleteAsset: true,
+    canRequestApproval: true,
     canManageSettings: true,
     canExportReports: true,
   },
@@ -27,6 +29,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
     canCreateAsset: true,
     canEditAsset: true,
     canDeleteAsset: false, // Technicians CANNOT delete assets
+    canRequestApproval: true,
     canManageSettings: false,
     canExportReports: true,
   },
@@ -34,6 +37,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
     canCreateAsset: false, // Viewers CANNOT create assets
     canEditAsset: false,   // Viewers CANNOT edit assets
     canDeleteAsset: false, // Viewers CANNOT delete assets
+    canRequestApproval: false,
     canManageSettings: false,
     canExportReports: true,
   },
@@ -115,8 +119,9 @@ export function resolveUserRole(
     return "admin";
   }
 
-  // 4. Default corporate user role: IT Technician
-  return "technician";
+  // 4. Default corporate user role: read-only until explicitly granted
+  //    an Azure AD app role (Technician / Admin) or listed in ADMIN_EMAILS.
+  return "viewer";
 }
 
 /**
