@@ -15,13 +15,15 @@ let cachedListId: string | null = null;
 
 function mapCategory(raw: string): AssetCategory {
   const c = (raw || "").trim().toLowerCase();
-  if (c.includes("laptop") || c.includes("macbook") || c.includes("thinkpad")) return "Laptop";
-  if (c.includes("desktop") || c.includes("pc") || c.includes("imac")) return "Desktop";
-  if (c.includes("monitor") || c.includes("screen") || c.includes("display")) return "Monitor";
-  if (c.includes("phone") || c.includes("iphone") || c.includes("mobile")) return "Phone";
-  if (c.includes("tablet") || c.includes("ipad")) return "Tablet";
-  if (c.includes("furniture") || c.includes("chair") || c.includes("desk")) return "Furniture";
-  if (c.includes("equip") || c.includes("network") || c.includes("server") || c.includes("printer")) return "Equipment";
+  // Match on word boundaries so short keywords ("pc", "desk") do not capture
+  // unrelated custom categories such as "Epcot Kiosk" or "Desk Lamp".
+  if (/\b(laptop|macbook|thinkpad)/.test(c)) return "Laptop";
+  if (/\b(desktop|imac)|\bpc\b/.test(c)) return "Desktop";
+  if (/\b(monitor|screen|display)/.test(c)) return "Monitor";
+  if (/\b(phone|iphone|mobile|smartphone)/.test(c)) return "Phone";
+  if (/\b(tablet|ipad)/.test(c)) return "Tablet";
+  if (/\b(furniture|chair)|\bdesks?$/.test(c)) return "Furniture";
+  if (/\b(equip|network|server|printer)/.test(c)) return "Equipment";
   // Preserve a custom category the user typed rather than flattening it to "Other".
   const original = (raw || "").trim();
   return original || "Other";
@@ -126,13 +128,12 @@ export function toSpFields(input: AssetInput, assetId?: string): Record<string, 
     Status: input.status,
     Assignee: input.assignee || "",
     Location: input.location || "",
+    // Date columns reject "" — send null so a cleared date clears in SharePoint.
+    PurchaseDate: input.purchaseDate || null,
     PurchasePrice: Number(input.purchasePrice) || 0,
+    WarrantyExpiry: input.warrantyExpiry || null,
     Notes: notesWithHistory,
   };
-
-  // Date columns reject "" — omit the key entirely when there is no value.
-  if (input.purchaseDate) fields.PurchaseDate = input.purchaseDate;
-  if (input.warrantyExpiry) fields.WarrantyExpiry = input.warrantyExpiry;
 
   if (assetId) {
     fields.AssetId = assetId;
@@ -224,7 +225,7 @@ async function resolveListId(token: string, siteId: string): Promise<string> {
 
 export interface SharePointService {
   fetchAll: () => Promise<Asset[]>;
-  create: (input: AssetInput) => Promise<Asset>;
+  create: (input: AssetInput & { id?: string }) => Promise<Asset>;
   update: (spItemId: string, input: AssetInput, ifMatchEtag?: string) => Promise<Asset>;
   remove: (spItemId: string) => Promise<void>;
   findItemIdByAssetId: (assetId: string) => Promise<string | null>;
@@ -253,11 +254,11 @@ export async function createSharePointService(
 
     while (nextUrl && pageCount < 50) {
       pageCount++;
-      const res = await fetch(nextUrl, { headers });
+      const res: Response = await fetch(nextUrl, { headers });
       if (!res.ok) {
         throw new Error(`Failed to load assets from SharePoint: HTTP ${res.status}`);
       }
-      const data = await res.json();
+      const data: any = await res.json();
       const items = (data.value || []).map(fromSpItem);
       allAssets = allAssets.concat(items);
       nextUrl = data["@odata.nextLink"] || null;
@@ -266,7 +267,7 @@ export async function createSharePointService(
     return allAssets;
   }
 
-  async function create(input: AssetInput): Promise<Asset> {
+  async function create(input: AssetInput & { id?: string }): Promise<Asset> {
     const year = new Date().getFullYear();
     const rand = Math.floor(1000 + Math.random() * 9000);
     const assetId = input.id && input.id.startsWith("ENC-")

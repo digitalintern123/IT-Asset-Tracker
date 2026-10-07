@@ -77,7 +77,7 @@ export function matchesAsset(asset: Asset, query: string): boolean {
   if (!query) return false;
   const q = query.trim().toLowerCase();
 
-  return (
+  return Boolean(
     (asset.id && asset.id.toLowerCase() === q) ||
     (asset.spItemId && asset.spItemId.toLowerCase() === q) ||
     (asset.serialNumber && asset.serialNumber.toLowerCase() === q)

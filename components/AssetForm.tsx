@@ -45,7 +45,7 @@ export function AssetForm({
 
   const isCustomInitial =
     !!initial?.category &&
-    !CATEGORIES.filter((c) => c !== "Other").includes(initial.category as StandardCategory);
+    !CATEGORIES.some((c) => c !== "Other" && c === initial.category);
 
   const [selectedCategory, setSelectedCategory] = useState<StandardCategory>(
     isCustomInitial ? "Other" : ((initial?.category as StandardCategory) ?? "Laptop"),

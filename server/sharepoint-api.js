@@ -268,13 +268,15 @@ async function resolveListId(token, siteId) {
  */
 function mapCategory(raw) {
   const c = (raw || "").trim().toLowerCase();
-  if (c.includes("laptop") || c.includes("macbook") || c.includes("thinkpad")) return "Laptop";
-  if (c.includes("desktop") || c.includes("pc") || c.includes("imac")) return "Desktop";
-  if (c.includes("monitor") || c.includes("screen") || c.includes("display")) return "Monitor";
-  if (c.includes("phone") || c.includes("iphone") || c.includes("mobile")) return "Phone";
-  if (c.includes("tablet") || c.includes("ipad")) return "Tablet";
-  if (c.includes("furniture") || c.includes("chair") || c.includes("desk")) return "Furniture";
-  if (c.includes("equip") || c.includes("network") || c.includes("server") || c.includes("printer")) return "Equipment";
+  // Match on word boundaries so short keywords ("pc", "desk") do not capture
+  // unrelated custom categories such as "Epcot Kiosk" or "Desk Lamp".
+  if (/\b(laptop|macbook|thinkpad)/.test(c)) return "Laptop";
+  if (/\b(desktop|imac)|\bpc\b/.test(c)) return "Desktop";
+  if (/\b(monitor|screen|display)/.test(c)) return "Monitor";
+  if (/\b(phone|iphone|mobile|smartphone)/.test(c)) return "Phone";
+  if (/\b(tablet|ipad)/.test(c)) return "Tablet";
+  if (/\b(furniture|chair)|\bdesks?$/.test(c)) return "Furniture";
+  if (/\b(equip|network|server|printer)/.test(c)) return "Equipment";
   // Preserve a custom category the user typed rather than flattening it to "Other".
   const original = (raw || "").trim();
   return original || "Other";
@@ -389,13 +391,12 @@ function assetInputToSpFields(input, assetId = null) {
     Status: input.status,
     Assignee: input.assignee || "",
     Location: input.location || "",
+    // Date columns reject "" — send null so a cleared date clears in SharePoint.
+    PurchaseDate: input.purchaseDate || null,
     PurchasePrice: Number(input.purchasePrice) || 0,
+    WarrantyExpiry: input.warrantyExpiry || null,
     Notes: notesWithHistory,
   };
-
-  // Date columns reject "" — omit the key entirely when there is no value.
-  if (input.purchaseDate) fields.PurchaseDate = input.purchaseDate;
-  if (input.warrantyExpiry) fields.WarrantyExpiry = input.warrantyExpiry;
 
   if (assetId) {
     fields.AssetId = assetId;
