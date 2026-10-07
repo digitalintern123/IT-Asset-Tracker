@@ -158,6 +158,12 @@ Native (Android) builds use `asset-tracker://auth/callback`
   `IT_MANAGER_EMAILS` in `lib/msConfig.ts`) and reassignment approval requests
   and decisions from the signed-in user's mailbox. Grant admin consent after
   adding it; until then the app opens a pre-filled draft instead.
+- `Mail.Send.Shared` — hand-over ("Laptop Confirmation") emails are sent as
+  the **corpit.helpdesk@encalm.com** shared mailbox (`HELPDESK_MAILBOX` in
+  `lib/msConfig.ts`), CC'd to `IT_CC_EMAILS`. Also give each IT staff member
+  **Send As** on that mailbox (Exchange admin centre → Mailboxes →
+  corpit.helpdesk → Delegation → Send as). Without it the email is sent from
+  the IT user's own mailbox instead.
 - `openid`, `profile`, `email`, `offline_access`
 
 **App roles.** Users without an `Admin` or `Technician` app role (and not in
@@ -228,6 +234,22 @@ fails with "SharePoint list is missing the
    items have no value yet; the app requires it on the form instead) → Save.
 
 A **Single line of text** column named `Vertical` also works.
+
+### Inventory columns (match the Encalm inventory sheet)
+
+Add these **Single line of text** columns (names exactly as shown; not
+required in SharePoint — the app enforces the required ones on the form):
+
+| Column | Sheet column | Required in app |
+|---|---|---|
+| `Department` | DEPARTMENT | yes |
+| `Custodianship` | Asset Custodianship | no |
+| `Criticality` | Criticality of asset / Asset Valuation (Low / Medium / High) | yes |
+| `OperationalStatus` | Status (Operational / Non Operational) | yes |
+| `AssetClass` | Asset Categorisation (Hardware / Software / Service) | yes |
+| `Accessories` | — (shown in the confirmation email, e.g. "Power Cord, Bag") | no |
+
+A missing column gives a clear "missing the '<name>' column" error on save.
 
 ### Required columns: `Make` and `Model`
 

@@ -16,6 +16,7 @@ const baseScopes = [
   "User.Read",
   "User.ReadBasic.All", // "Assigned to" people picker (names + emails from Azure AD)
   "Mail.Send",
+  "Mail.Send.Shared", // send hand-over emails as corpit.helpdesk@encalm.com
   sharepointScope,
 ] as const;
 
@@ -42,6 +43,12 @@ export const MS_CONFIG = {
     "admin@encalmhospitality.com",
     "it@encalmhospitality.com",
   ],
+
+  // Hand-over confirmation emails are sent as this shared mailbox
+  // (needs Mail.Send.Shared + Exchange "Send As" for IT staff).
+  HELPDESK_MAILBOX: "corpit.helpdesk@encalm.com",
+  // CC'd on every hand-over email. Add the IT team's addresses here.
+  IT_CC_EMAILS: ["encalmit@encalm.com"],
 
   // Receives a copy when a user confirms receipt of an assigned device.
   CONFIRMATION_EMAIL: "encalmit@encalm.com",

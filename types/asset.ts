@@ -33,6 +33,8 @@ export interface AssignmentRecord {
   /** Set when the user confirmed receipt (from the Asset Confirmations list). */
   confirmedAt?: string;
   confirmedBy?: string;
+  /** Came from the one-time inventory sheet import (never emailed). */
+  imported?: boolean;
 }
 
 export type AssetEventType =
@@ -91,6 +93,14 @@ export interface Asset {
   location: string;
   /** Company the device belongs to (SharePoint "Vertical" column). */
   vertical?: string;
+  department?: string;
+  custodianship?: string;
+  criticality?: string;
+  /** "Operational" / "Non Operational" (separate from the workflow status). */
+  operationalStatus?: string;
+  /** Hardware / Software / Service. */
+  assetClass?: string;
+  accessories?: string;
   purchaseDate: string;
   purchasePrice: number;
   warrantyExpiry: string | null;

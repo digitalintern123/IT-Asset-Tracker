@@ -25,6 +25,7 @@ import {
   makeEvent,
   needsReassignApproval,
   newCustodyRecords,
+  openCustodyRecord,
   toAssetInput,
 } from "@/lib/assetWorkflow";
 import { applyConfirmations, confirmLink, fetchConfirmations } from "@/lib/confirmations";
@@ -121,6 +122,10 @@ export const DEMO_SAMPLE_ASSETS: Asset[] = [
     assignee: "Rahul Sharma",
     location: "DEL — T3 Terminal Lounge - Reception",
     vertical: "ENCALM HOSPITALITY PVT LTD",
+    department: "IT",
+    criticality: "Medium",
+    operationalStatus: "Operational",
+    assetClass: "Hardware",
     purchaseDate: "2024-03-15",
     purchasePrice: 249900,
     warrantyExpiry: "2027-03-15",
@@ -151,6 +156,10 @@ export const DEMO_SAMPLE_ASSETS: Asset[] = [
     assignee: "",
     location: "HYD — IT Storage",
     vertical: "ENCALM EATS PVT LTD",
+    department: "IT",
+    criticality: "Medium",
+    operationalStatus: "Operational",
+    assetClass: "Hardware",
     purchaseDate: "2024-01-10",
     purchasePrice: 48500,
     warrantyExpiry: "2027-01-10",
@@ -172,6 +181,10 @@ export const DEMO_SAMPLE_ASSETS: Asset[] = [
     assignee: "Priya Nair",
     location: "GOA — Encalm Operations Desk",
     vertical: "ENCALM HOTEL",
+    department: "IT",
+    criticality: "Medium",
+    operationalStatus: "Operational",
+    assetClass: "Hardware",
     purchaseDate: "2023-11-20",
     purchasePrice: 134900,
     warrantyExpiry: "2025-11-20",
@@ -226,6 +239,13 @@ interface AssetContextValue {
     decisionNotes?: string
   ) => Promise<void>;
   refresh: () => Promise<void>;
+  /** One-time inventory import: creates assets in order, no emails. */
+  importAssets: (
+    rows: { input: AssetInput; assigneeEmail?: string }[],
+    onProgress?: (done: number) => void
+  ) => Promise<{ ok: boolean; id?: string; error?: string }[]>;
+  /** Email the current user the hand-over confirmation request again. */
+  sendConfirmationRequest: (id: string) => Promise<"sent" | "draft" | "failed">;
 }
 
 const AssetContext = createContext<AssetContextValue | undefined>(undefined);
@@ -930,6 +950,90 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
     [assets, user?.name, user?.email, updateAsset, deleteAsset]
   );
 
+  const importAssets = useCallback(
+    async (
+      rows: { input: AssetInput; assigneeEmail?: string }[],
+      onProgress?: (done: number) => void
+    ): Promise<{ ok: boolean; id?: string; error?: string }[]> => {
+      if (user?.permissions && !user.permissions.canCreateAsset) {
+        throw new Error("Unauthorized: Your role does not allow creating new assets.");
+      }
+      if (!user?.isDemo && !isNetworkOnline()) {
+        throw new Error("The import needs an internet connection.");
+      }
+      const token = user?.isDemo ? null : (await getValidAccessToken()) || user?.accessToken;
+      const by = user?.name || "IT Staff";
+      // Work from a running list so each new ID sees the ones created before it.
+      let working = [...assets];
+      const results: { ok: boolean; id?: string; error?: string }[] = [];
+
+      setSyncing(true);
+      setSyncError(null);
+      try {
+        for (let i = 0; i < rows.length; i++) {
+          const { input, assigneeEmail } = rows[i];
+          try {
+            const id = generateStableAssetId(input.category, working);
+            const created = eventsForCreate(input, { by, assigneeEmail, reason: "Imported from inventory sheet" });
+            // Legacy hand-overs: never emailed, shown as "Imported — not confirmed".
+            const history = created.history.map((rec) => ({
+              ...rec,
+              imported: true,
+              notes: "Imported from inventory sheet",
+            }));
+            const now = new Date().toISOString();
+            let asset: Asset = {
+              ...input,
+              id,
+              spItemId: user?.isDemo ? `demo-imp-${Date.now()}-${i}` : undefined,
+              assignmentHistory: history,
+              events: created.events,
+              createdAt: now,
+              updatedAt: now,
+              _syncStatus: "synced",
+            };
+            if (!user?.isDemo) {
+              const saved = await apiCreateAsset(asset, token || undefined);
+              asset = { ...asset, ...saved, id, assignmentHistory: history, events: created.events, _syncStatus: "synced" };
+            }
+            working = [asset, ...working];
+            results.push({ ok: true, id });
+          } catch (err: any) {
+            results.push({ ok: false, error: err?.message || "Failed to save" });
+          }
+          onProgress?.(i + 1);
+        }
+      } finally {
+        setAssets(working);
+        await updateCache(working);
+        setSyncing(false);
+      }
+      return results;
+    },
+    [assets, user?.permissions, user?.isDemo, user?.accessToken, user?.name, getValidAccessToken, updateCache]
+  );
+
+  const sendConfirmationRequest = useCallback(
+    async (id: string): Promise<"sent" | "draft" | "failed"> => {
+      const existing = assets.find((a) => matchesAsset(a, id));
+      const rec = existing ? openCustodyRecord(existing) : undefined;
+      if (!existing || !rec?.assigneeEmail) {
+        throw new Error("This device has no current user with an email to confirm.");
+      }
+      if (rec.confirmedAt) throw new Error("The user has already confirmed this device.");
+      if (user?.isDemo) return "failed";
+      const token = (await getValidAccessToken()) || user?.accessToken;
+      const mail = buildAssignmentConfirmMail(
+        existing,
+        rec,
+        user?.name || "Encalm IT",
+        confirmLink(appOrigin(), existing.id, rec.id)
+      );
+      return deliverMail(token, mail);
+    },
+    [assets, user?.isDemo, user?.accessToken, user?.name, getValidAccessToken]
+  );
+
   const value = useMemo<AssetContextValue>(
     () => ({
       assets,
@@ -946,6 +1050,8 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       requestApproval,
       resolveApproval,
       refresh,
+      importAssets,
+      sendConfirmationRequest,
     }),
     [
       assets,
@@ -962,6 +1068,8 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       requestApproval,
       resolveApproval,
       refresh,
+      importAssets,
+      sendConfirmationRequest,
     ]
   );
 

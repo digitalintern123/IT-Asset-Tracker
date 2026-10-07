@@ -376,6 +376,12 @@ function spItemToAsset(item) {
     vertical: String(f.Vertical || ""),
     make: String(f.Make || ""),
     model: String(f.Model || ""),
+    department: String(f.Department || ""),
+    custodianship: String(f.Custodianship || ""),
+    criticality: String(f.Criticality || ""),
+    operationalStatus: String(f.OperationalStatus || ""),
+    assetClass: String(f.AssetClass || ""),
+    accessories: String(f.Accessories || ""),
     purchaseDate: String(f.PurchaseDate || ""),
     purchasePrice: Number(f.PurchasePrice) || 0,
     warrantyExpiry: f.WarrantyExpiry ? String(f.WarrantyExpiry) : null,
@@ -396,7 +402,17 @@ function spItemToAsset(item) {
  */
 const MAX_STORED_EVENTS = 200;
 
-const OPTIONAL_COLUMNS = ["Vertical", "Make", "Model"];
+const OPTIONAL_COLUMNS = [
+  "Vertical",
+  "Make",
+  "Model",
+  "Department",
+  "Custodianship",
+  "Criticality",
+  "OperationalStatus",
+  "AssetClass",
+  "Accessories",
+];
 
 /** Graph rejects writes to a column the list doesn't have; say which one. */
 function missingColumnError(status, body) {
@@ -451,6 +467,12 @@ function assetInputToSpFields(input, assetId = null) {
   if (input.vertical) fields.Vertical = input.vertical;
   if (input.make) fields.Make = input.make;
   if (input.model) fields.Model = input.model;
+  if (input.department) fields.Department = input.department;
+  if (input.custodianship) fields.Custodianship = input.custodianship;
+  if (input.criticality) fields.Criticality = input.criticality;
+  if (input.operationalStatus) fields.OperationalStatus = input.operationalStatus;
+  if (input.assetClass) fields.AssetClass = input.assetClass;
+  if (input.accessories) fields.Accessories = input.accessories;
 
   if (assetId) {
     fields.AssetId = assetId;

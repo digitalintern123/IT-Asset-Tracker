@@ -55,6 +55,7 @@ function RootLayoutNav() {
         <Stack.Screen name="asset/[id]" options={{ title: "Asset" }} />
         <Stack.Screen name="reports" options={{ title: "Report logs" }} />
         <Stack.Screen name="confirm" options={{ title: "Confirm receipt" }} />
+        <Stack.Screen name="import" options={{ title: "Import from Excel" }} />
         <Stack.Screen
           name="scan"
           options={{ title: "Scan", presentation: "modal" }}

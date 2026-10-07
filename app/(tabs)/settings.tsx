@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandHeader } from "@/components/BrandHeader";
-import { ChevronRight, Cloud, Database, FileText, LogOut, LucideIcon } from "@/components/LucideIcon";
+import { ChevronRight, Cloud, Database, FileText, LogOut, LucideIcon, Upload } from "@/components/LucideIcon";
 import { useAssets } from "@/contexts/AssetContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -131,6 +131,32 @@ export default function SettingsScreen() {
             <Text style={[styles.summaryTitle, { color: colors.foreground }]}>Report logs</Text>
             <Text style={[styles.summarySub, { color: colors.mutedForeground }]}>
               Device history, approvals and CSV export
+            </Text>
+          </View>
+          <ChevronRight size={18} color={colors.mutedForeground} strokeWidth={1.8} />
+        </Pressable>
+      ) : null}
+
+      {user?.role === "admin" && Platform.OS === "web" ? (
+        <Pressable
+          onPress={() => router.push("/import")}
+          style={({ pressed }) => [
+            styles.summary,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              marginTop: 14,
+              opacity: pressed ? 0.7 : 1,
+            },
+          ]}
+        >
+          <View style={[styles.summaryIcon, { backgroundColor: colors.primary + "1F" }]}>
+            <Upload size={20} color={colors.primary} strokeWidth={1.8} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.summaryTitle, { color: colors.foreground }]}>Import from Excel</Text>
+            <Text style={[styles.summarySub, { color: colors.mutedForeground }]}>
+              One-time upload of the inventory sheet (.xlsx)
             </Text>
           </View>
           <ChevronRight size={18} color={colors.mutedForeground} strokeWidth={1.8} />

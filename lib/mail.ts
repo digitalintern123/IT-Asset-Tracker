@@ -15,7 +15,12 @@ export interface MailMessage {
   to: string[];
   cc?: string[];
   subject: string;
+  /** Plain-text body (also used for the draft fallback). */
   body: string;
+  /** Optional HTML body, used when sent through Graph. */
+  html?: string;
+  /** Send as this mailbox (e.g. the IT helpdesk shared mailbox). */
+  from?: string;
 }
 
 export type MailOutcome = "sent" | "draft" | "failed";
@@ -39,10 +44,17 @@ export function cleanRecipients(list: (string | null | undefined)[]): string[] {
   return out;
 }
 
-export async function sendGraphMail(token: string, msg: MailMessage): Promise<void> {
+export async function sendGraphMail(
+  token: string,
+  msg: MailMessage,
+  fromMailbox?: string,
+): Promise<void> {
   const toRecipients = (list: string[]) =>
     list.map((address) => ({ emailAddress: { address } }));
-  const res = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
+  const url = fromMailbox
+    ? `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(fromMailbox)}/sendMail`
+    : "https://graph.microsoft.com/v1.0/me/sendMail";
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -51,7 +63,9 @@ export async function sendGraphMail(token: string, msg: MailMessage): Promise<vo
     body: JSON.stringify({
       message: {
         subject: msg.subject,
-        body: { contentType: "Text", content: msg.body },
+        body: msg.html
+          ? { contentType: "HTML", content: msg.html }
+          : { contentType: "Text", content: msg.body },
         toRecipients: toRecipients(msg.to),
         ccRecipients: toRecipients(msg.cc || []),
       },
@@ -84,13 +98,25 @@ export async function openMailDraft(msg: MailMessage): Promise<boolean> {
   }
 }
 
-/** Send via Graph; fall back to a pre-filled draft if Graph is unavailable. */
+/**
+ * Send via Graph — as `msg.from` (shared mailbox) when set, else from the
+ * signed-in user's own mailbox — and fall back to a pre-filled draft.
+ */
 export async function deliverMail(
   token: string | null | undefined,
   msg: MailMessage,
 ): Promise<MailOutcome> {
   if (msg.to.length === 0) return "failed";
   if (token) {
+    if (msg.from) {
+      try {
+        await sendGraphMail(token, msg, msg.from);
+        return "sent";
+      } catch (err) {
+        // Needs Mail.Send.Shared consent and "Send As" on the shared mailbox.
+        console.warn(`Could not send as ${msg.from}; sending from your own mailbox instead:`, err);
+      }
+    }
     try {
       await sendGraphMail(token, msg);
       return "sent";
@@ -122,31 +148,72 @@ function deviceLines(asset: Asset): string[] {
   ];
 }
 
-/** "Encalm IT has assigned this asset to you — please confirm." */
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
+ * Hand-over confirmation, in the format Corporate IT already uses
+ * ("Laptop Confirmation"), sent as the IT helpdesk mailbox with IT in CC.
+ */
 export function buildAssignmentConfirmMail(
   asset: Asset,
   record: { assignee: string; assigneeEmail?: string },
   assignedBy: string,
   confirmUrl: string,
 ): MailMessage {
+  const category = String(asset.category || "Asset");
+  const firstName = (record.assignee || "").trim().split(/\s+/)[0] || "Colleague";
+  const model = [asset.make, asset.model].filter(Boolean).join(" ") || "—";
+  const accessories = asset.accessories || "—";
+  const intro = `Please find below the details of the ${category.toLowerCase()} handed over to you. Kindly review and confirm receipt of the same:`;
+  const cols = ["S. No.", "Asset Name", "Asset Model", "Serial No.", "Hostname", "Accessories"];
+  const vals = ["1", category, model, asset.serialNumber || "—", asset.name, accessories];
+  const cell = "border:1px solid #000;padding:6px 10px;font-family:Segoe UI,Arial,sans-serif;font-size:14px;";
+  const html = [
+    `<div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#000;">`,
+    `<p>Dear ${escapeHtml(firstName)},</p>`,
+    `<p>${escapeHtml(intro)}</p>`,
+    `<table style="border-collapse:collapse;margin:12px 0;">`,
+    `<tr>${cols.map((c) => `<th style="${cell}font-weight:600;text-align:center;">${escapeHtml(c)}</th>`).join("")}</tr>`,
+    `<tr>${vals.map((v) => `<td style="${cell}">${escapeHtml(v)}</td>`).join("")}</tr>`,
+    `</table>`,
+    `<p><a href="${escapeHtml(confirmUrl)}" style="display:inline-block;background:#CDA45E;color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-weight:600;">Confirm receipt</a></p>`,
+    `<p style="font-size:12px;color:#555;">If the button doesn't work, open this link and sign in with your Encalm Microsoft 365 account:<br>${escapeHtml(confirmUrl)}</p>`,
+    `<p>Looking forward your confirmation.</p>`,
+    `<p>Warm Regards,<br><b>Corporate IT</b><br>${escapeHtml(MS_CONFIG.HELPDESK_MAILBOX)}<br>Encalm Hospitality Pvt. Ltd.</p>`,
+    `<p style="font-size:11px;color:#777;">Handed over by ${escapeHtml(assignedBy)} on ${escapeHtml(new Date().toLocaleString())}.</p>`,
+    `</div>`,
+  ].join("");
+  const text = [
+    `Dear ${firstName},`,
+    "",
+    intro,
+    "",
+    ...cols.map((c, i) => `${c}: ${vals[i]}`),
+    "",
+    `Confirm receipt: ${confirmUrl}`,
+    "",
+    `Looking forward your confirmation.`,
+    "",
+    `Warm Regards,`,
+    `Corporate IT`,
+    MS_CONFIG.HELPDESK_MAILBOX,
+  ].join("\n");
   return {
     to: cleanRecipients([record.assigneeEmail]),
-    subject: `Encalm IT has assigned an asset to you — please confirm (${asset.id})`,
-    body: [
-      `Hello ${record.assignee},`,
-      "",
-      `Encalm IT has assigned the following asset to you:`,
-      "",
-      ...deviceLines(asset),
-      `• Assigned by: ${assignedBy} on ${new Date().toLocaleString()}`,
-      "",
-      `Please confirm that you have received it by opening this link and signing in with your Encalm Microsoft 365 account:`,
-      confirmUrl,
-      "",
-      `If you have not received this device, please contact Encalm IT.`,
-      "",
-      `Encalm IT Asset Management System`,
-    ].join("\n"),
+    cc: cleanRecipients([...MS_CONFIG.IT_CC_EMAILS]).filter(
+      (e) => e.toLowerCase() !== (record.assigneeEmail || "").toLowerCase(),
+    ),
+    from: MS_CONFIG.HELPDESK_MAILBOX,
+    subject: `${category} Confirmation — ${asset.name}`,
+    body: text,
+    html,
   };
 }
 

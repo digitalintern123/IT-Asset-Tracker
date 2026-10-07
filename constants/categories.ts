@@ -72,3 +72,7 @@ export const VERTICALS = [
   "ENCALM SKYPLATES",
   "ENCALM HOTEL",
 ] as const;
+
+export const CRITICALITY_LEVELS = ["Low", "Medium", "High"] as const;
+export const OPERATIONAL_STATUSES = ["Operational", "Non Operational"] as const;
+export const ASSET_CLASSES = ["Hardware", "Software", "Service"] as const;

@@ -16,6 +16,9 @@ import {
   STATUSES,
   STATUS_COLORS,
   STATUS_LABELS,
+  ASSET_CLASSES,
+  CRITICALITY_LEVELS,
+  OPERATIONAL_STATUSES,
   VERTICALS,
   getCategoryIcon,
 } from "@/constants/categories";
@@ -74,6 +77,14 @@ export function AssetForm({
   const [assignee, setAssignee] = useState(initial?.assignee ?? "");
   const [assigneeEmail, setAssigneeEmail] = useState(initialAssigneeEmail ?? "");
   const [location, setLocation] = useState(initial?.location ?? "");
+  const [department, setDepartment] = useState(initial?.department ?? "");
+  const [custodianship, setCustodianship] = useState(initial?.custodianship ?? "");
+  const [criticality, setCriticality] = useState<string>(initial?.criticality ?? "");
+  const [operationalStatus, setOperationalStatus] = useState<string>(
+    initial?.operationalStatus ?? (initial ? "" : "Operational"),
+  );
+  const [assetClass, setAssetClass] = useState<string>(initial?.assetClass ?? (initial ? "" : "Hardware"));
+  const [accessories, setAccessories] = useState(initial?.accessories ?? "");
   const [vertical, setVertical] = useState<string>(
     (VERTICALS as readonly string[]).includes(initial?.vertical ?? "") ? initial!.vertical! : "",
   );
@@ -142,21 +153,38 @@ export function AssetForm({
       setError("Please select the Vertical (company) *");
       return;
     }
-    // 8. Purchase Date is mandatory
-    if (!purchaseDate.trim()) {
-      setError("Purchase date (YYYY-MM-DD) is required *");
+    // 8. Inventory sheet fields
+    if (!department.trim()) {
+      setError("Department is required *");
       return;
     }
-    // 9. Purchase Price is mandatory
+    if (!criticality) {
+      setError("Please select the Criticality / Asset valuation *");
+      return;
+    }
+    if (!operationalStatus) {
+      setError("Please select the Operational status *");
+      return;
+    }
+    if (!assetClass) {
+      setError("Please select the Asset categorisation (Hardware / Software / Service) *");
+      return;
+    }
+    // 9. Purchase details are optional (older devices often have none),
+    //    but must be well-formed when given.
+    const isoDate = /^\d{4}-\d{2}-\d{2}$/;
+    if (purchaseDate.trim() && !isoDate.test(purchaseDate.trim())) {
+      setError("Purchase date must be YYYY-MM-DD *");
+      return;
+    }
     const cleanPriceStr = purchasePriceText.replace(/[^0-9.]/g, "");
-    const price = parseFloat(cleanPriceStr);
-    if (!purchasePriceText.trim() || !Number.isFinite(price) || price < 0) {
-      setError("Purchase price (₹ INR) is required *");
+    const price = cleanPriceStr ? parseFloat(cleanPriceStr) : 0;
+    if (!Number.isFinite(price) || price < 0) {
+      setError("Purchase price must be a number (₹ INR) *");
       return;
     }
-    // 10. Warranty Expiry is mandatory
-    if (!warrantyExpiry.trim()) {
-      setError("Warranty expiry date (YYYY-MM-DD) is required *");
+    if (warrantyExpiry.trim() && !isoDate.test(warrantyExpiry.trim())) {
+      setError("Warranty expiry must be YYYY-MM-DD *");
       return;
     }
     // 11. Maintenance Notes required only if in maintenance
@@ -182,6 +210,12 @@ export function AssetForm({
         assignee: assignee.trim(),
         location: location.trim(),
         vertical,
+        department: department.trim(),
+        custodianship: custodianship.trim(),
+        criticality,
+        operationalStatus,
+        assetClass,
+        accessories: accessories.trim(),
         purchaseDate: purchaseDate.trim(),
         purchasePrice: price,
         warrantyExpiry: warrantyExpiry.trim() || null,
@@ -512,10 +546,58 @@ export function AssetForm({
           onChange={setVertical}
           placeholder="Select company"
         />
+        <Field label="Department *" colors={colors}>
+          <TextInput
+            value={department}
+            onChangeText={setDepartment}
+            placeholder="e.g. Housekeeping"
+            placeholderTextColor={colors.mutedForeground}
+            style={inputStyle}
+          />
+        </Field>
+        <Field label="Asset custodianship" colors={colors}>
+          <TextInput
+            value={custodianship}
+            onChangeText={setCustodianship}
+            placeholder="e.g. Encalm IT Team & Ops Team"
+            placeholderTextColor={colors.mutedForeground}
+            style={inputStyle}
+          />
+        </Field>
+        <SelectField
+          label="Criticality / Asset valuation *"
+          value={criticality}
+          options={CRITICALITY_LEVELS.map((v) => ({ value: v, label: v }))}
+          onChange={setCriticality}
+          placeholder="Select criticality"
+        />
+        <SelectField
+          label="Operational status *"
+          value={operationalStatus}
+          options={OPERATIONAL_STATUSES.map((v) => ({ value: v, label: v }))}
+          onChange={setOperationalStatus}
+          placeholder="Operational / Non Operational"
+        />
+        <SelectField
+          label="Asset categorisation *"
+          value={assetClass}
+          options={ASSET_CLASSES.map((v) => ({ value: v, label: v }))}
+          onChange={setAssetClass}
+          placeholder="Hardware / Software / Service"
+        />
+        <Field label="Accessories" colors={colors}>
+          <TextInput
+            value={accessories}
+            onChangeText={setAccessories}
+            placeholder="e.g. Power Cord, Bag"
+            placeholderTextColor={colors.mutedForeground}
+            style={inputStyle}
+          />
+        </Field>
       </Section>
 
       <Section label="Purchase" colors={colors}>
-        <Field label="Purchase date (YYYY-MM-DD) *" colors={colors}>
+        <Field label="Purchase date (YYYY-MM-DD)" colors={colors}>
           <TextInput
             value={purchaseDate}
             onChangeText={setPurchaseDate}
@@ -525,7 +607,7 @@ export function AssetForm({
             autoCapitalize="none"
           />
         </Field>
-        <Field label="Purchase price (₹ INR) *" colors={colors}>
+        <Field label="Purchase price (₹ INR)" colors={colors}>
           <TextInput
             value={purchasePriceText}
             onChangeText={setPurchasePriceText}
@@ -535,7 +617,7 @@ export function AssetForm({
             style={inputStyle}
           />
         </Field>
-        <Field label="Warranty expiry (YYYY-MM-DD) *" colors={colors}>
+        <Field label="Warranty expiry (YYYY-MM-DD)" colors={colors}>
           <TextInput
             value={warrantyExpiry}
             onChangeText={setWarrantyExpiry}

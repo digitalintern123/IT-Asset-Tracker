@@ -26,6 +26,9 @@ export interface ReportRow {
   model: string;
   location: string;
   vertical: string;
+  department: string;
+  criticality: string;
+  operationalStatus: string;
   type: AssetEventType;
   event: string;
   user: string;
@@ -56,6 +59,9 @@ export function flattenEvents(assets: Asset[]): ReportRow[] {
         model: asset.model || "",
         location: asset.location || "",
         vertical: asset.vertical || "",
+        department: asset.department || "",
+        criticality: asset.criticality || "",
+        operationalStatus: asset.operationalStatus || "",
         type: evt.type,
         event: EVENT_LABELS[evt.type] ?? evt.type,
         user: evt.assignee || "",
@@ -90,7 +96,7 @@ export function filterRows(rows: ReportRow[], f: ReportFilter): ReportRow[] {
     if (f.from && day < f.from) return false;
     if (f.to && day > f.to) return false;
     if (q) {
-      const hay = `${r.assetId} ${r.device} ${r.make} ${r.model} ${r.location} ${r.vertical} ${r.user} ${r.by} ${r.approvedBy} ${r.notes}`.toLowerCase();
+      const hay = `${r.assetId} ${r.device} ${r.make} ${r.model} ${r.location} ${r.vertical} ${r.department} ${r.user} ${r.by} ${r.approvedBy} ${r.notes}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -112,6 +118,9 @@ export function toCsv(rows: ReportRow[]): string {
     "Model",
     "Vertical",
     "Location",
+    "Department",
+    "Criticality",
+    "Operational status",
     "Event",
     "User",
     "By",
@@ -130,6 +139,9 @@ export function toCsv(rows: ReportRow[]): string {
         r.model,
         r.vertical,
         r.location,
+        r.department,
+        r.criticality,
+        r.operationalStatus,
         r.event,
         r.user,
         r.by,

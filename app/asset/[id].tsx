@@ -91,6 +91,7 @@ export default function AssetDetailScreen() {
     reassignAsset,
     requestApproval,
     resolveApproval,
+    sendConfirmationRequest,
   } = useAssets();
   const { user } = useAuth();
   const [editing, setEditing] = useState(false);
@@ -108,6 +109,7 @@ export default function AssetDetailScreen() {
   const [deleteRequestModalOpen, setDeleteRequestModalOpen] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [sendingConfirmation, setSendingConfirmation] = useState(false);
 
   const asset = id ? getAsset(id) : undefined;
 
@@ -127,6 +129,28 @@ export default function AssetDetailScreen() {
 
   const isAdmin = user?.role === "admin";
   const canDirectDelete = isAdmin;
+  const handleSendConfirmation = async () => {
+    setSendingConfirmation(true);
+    try {
+      const outcome = await sendConfirmationRequest(asset!.id);
+      const msg =
+        outcome === "sent"
+          ? "Confirmation request emailed to the user."
+          : outcome === "draft"
+          ? "A pre-filled email opened — please send it."
+          : user?.isDemo
+          ? "Demo Mode doesn't send emails."
+          : "Could not send the email.";
+      if (Platform.OS === "web") window.alert(msg);
+      else Alert.alert("Confirmation request", msg);
+    } catch (err: any) {
+      const m = err?.message || "Could not send the confirmation request.";
+      if (Platform.OS === "web") window.alert(m);
+      else Alert.alert("Error", m);
+    } finally {
+      setSendingConfirmation(false);
+    }
+  };
   const deleteLocked = asset ? isDeleteLocked(asset) : false;
 
   // Handle direct delete (Admin) or request modal (Non-admin)
@@ -597,7 +621,13 @@ export default function AssetDetailScreen() {
       <DetailGroup title="Assignment" colors={colors}>
         <DetailRow label="Assigned to" value={asset.assignee || "—"} colors={colors} />
         <DetailRow label="Location" value={asset.location || "—"} colors={colors} />
-        <DetailRow label="Vertical" value={asset.vertical || "—"} colors={colors} last />
+        <DetailRow label="Vertical" value={asset.vertical || "—"} colors={colors} />
+        <DetailRow label="Department" value={asset.department || "—"} colors={colors} />
+        <DetailRow label="Custodianship" value={asset.custodianship || "—"} colors={colors} />
+        <DetailRow label="Criticality" value={asset.criticality || "—"} colors={colors} />
+        <DetailRow label="Operational status" value={asset.operationalStatus || "—"} colors={colors} />
+        <DetailRow label="Asset categorisation" value={asset.assetClass || "—"} colors={colors} />
+        <DetailRow label="Accessories" value={asset.accessories || "—"} colors={colors} last />
       </DetailGroup>
 
       <DetailGroup title="Purchase" colors={colors}>
@@ -654,9 +684,33 @@ export default function AssetDetailScreen() {
                       ✓ Confirmed by {record.confirmedBy || record.assignee} on {formatDate(record.confirmedAt)}
                     </Text>
                   ) : record.assigneeEmail && !record.returnedAt ? (
-                    <Text style={{ fontSize: 11, color: colors.mutedForeground, marginTop: 2 }}>
-                      Awaiting confirmation from {record.assigneeEmail}
-                    </Text>
+                    <View style={{ marginTop: 2, gap: 4 }}>
+                      <Text style={{ fontSize: 11, color: colors.mutedForeground }}>
+                        {record.imported
+                          ? `Imported — not confirmed (${record.assigneeEmail})`
+                          : `Awaiting confirmation from ${record.assigneeEmail}`}
+                      </Text>
+                      {user?.permissions?.canEditAsset ? (
+                        <Pressable
+                          onPress={() => handleSendConfirmation()}
+                          disabled={sendingConfirmation}
+                          accessibilityRole="button"
+                          style={({ pressed }) => ({
+                            alignSelf: "flex-start",
+                            paddingVertical: 4,
+                            paddingHorizontal: 10,
+                            borderRadius: 50,
+                            borderWidth: 1,
+                            borderColor: colors.primary,
+                            opacity: sendingConfirmation ? 0.6 : pressed ? 0.7 : 1,
+                          })}
+                        >
+                          <Text style={{ fontSize: 11, color: colors.primary, fontFamily: "Inter_600SemiBold" }}>
+                            {sendingConfirmation ? "Sending…" : "Send confirmation request"}
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
                   ) : null}
                 </View>
                 <View
