@@ -151,6 +151,8 @@ Native (Android) builds use `asset-tracker://auth/callback`
 
 **API permissions (Microsoft Graph delegated, admin consent granted):**
 - `User.Read`
+- `User.ReadBasic.All` — the "Assigned to" picker searches Azure AD for the
+  user's name and email. Without it the app falls back to manual entry.
 - `Sites.ReadWrite.All` (or `Sites.Selected` for least privilege)
 - `Mail.Send` — the app emails maintenance notices (to the device's user and
   `IT_MANAGER_EMAILS` in `lib/msConfig.ts`) and reassignment approval requests

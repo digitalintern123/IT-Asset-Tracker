@@ -18,6 +18,7 @@ import {
   STATUS_LABELS,
   getCategoryIcon,
 } from "@/constants/categories";
+import { PeoplePicker } from "@/components/PeoplePicker";
 import { useColors } from "@/hooks/useColors";
 import type { Asset, AssetInput, AssetStatus, StandardCategory } from "@/types/asset";
 
@@ -450,26 +451,15 @@ export function AssetForm({
             </View>
           ) : null}
         </Field>
-        <Field label={status === "in_use" ? "Assigned to *" : "Assigned to"} colors={colors}>
-          <TextInput
-            value={assignee}
-            onChangeText={setAssignee}
-            placeholder="Person or team"
-            placeholderTextColor={colors.mutedForeground}
-            style={inputStyle}
-          />
-        </Field>
-        <Field label={status === "in_use" ? "Assignee O365 email *" : "Assignee O365 email"} colors={colors}>
-          <TextInput
-            value={assigneeEmail}
-            onChangeText={setAssigneeEmail}
-            placeholder="name@encalm.com"
-            placeholderTextColor={colors.mutedForeground}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            style={inputStyle}
-          />
-        </Field>
+        <PeoplePicker
+          value={{ name: assignee, email: assigneeEmail }}
+          onChange={(next) => {
+            setAssignee(next.name);
+            setAssigneeEmail(next.email);
+          }}
+          nameLabel={status === "in_use" ? "Assigned to *" : "Assigned to"}
+          emailLabel={status === "in_use" ? "Assignee O365 email *" : "Assignee O365 email"}
+        />
         <Field label="Location *" colors={colors}>
           <TextInput
             value={location}

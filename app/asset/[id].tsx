@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import QRCode from "react-native-qrcode-svg";
 
 import { AssetForm } from "@/components/AssetForm";
+import { PeoplePicker } from "@/components/PeoplePicker";
 import {
   AlertCircle,
   Check,
@@ -776,24 +777,14 @@ export default function AssetDetailScreen() {
               Transfer custody of <Text style={{ fontFamily: "Inter_600SemiBold", color: colors.foreground }}>{asset.name}</Text> ({asset.id}) to a new custodian.
             </Text>
 
-            <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>NEW CUSTODIAN NAME *</Text>
-            <TextInput
-              style={[styles.textInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
-              placeholder="e.g. Vikram Mehta"
-              placeholderTextColor={colors.mutedForeground + "88"}
-              value={reassignName}
-              onChangeText={setReassignName}
-            />
-
-            <Text style={[styles.inputLabel, { color: colors.mutedForeground, marginTop: 12 }]}>CUSTODIAN EMAIL (OPTIONAL)</Text>
-            <TextInput
-              style={[styles.textInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
-              placeholder="e.g. vikram.m@encalm.com"
-              placeholderTextColor={colors.mutedForeground + "88"}
-              value={reassignEmail}
-              onChangeText={setReassignEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
+            <PeoplePicker
+              value={{ name: reassignName, email: reassignEmail }}
+              onChange={(next) => {
+                setReassignName(next.name);
+                setReassignEmail(next.email);
+              }}
+              nameLabel="New custodian *"
+              emailLabel="Custodian email"
             />
 
             <Text style={[styles.inputLabel, { color: colors.mutedForeground, marginTop: 12 }]}>LOCATION / TERMINAL</Text>

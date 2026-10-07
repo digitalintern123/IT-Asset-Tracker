@@ -14,6 +14,7 @@ const baseScopes = [
   "email",
   "offline_access",
   "User.Read",
+  "User.ReadBasic.All", // "Assigned to" people picker (names + emails from Azure AD)
   "Mail.Send",
   sharepointScope,
 ] as const;
