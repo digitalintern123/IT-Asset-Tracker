@@ -374,6 +374,8 @@ function spItemToAsset(item) {
     ),
     location: String(f.Location || ""),
     vertical: String(f.Vertical || ""),
+    make: String(f.Make || ""),
+    model: String(f.Model || ""),
     purchaseDate: String(f.PurchaseDate || ""),
     purchasePrice: Number(f.PurchasePrice) || 0,
     warrantyExpiry: f.WarrantyExpiry ? String(f.WarrantyExpiry) : null,
@@ -394,13 +396,16 @@ function spItemToAsset(item) {
  */
 const MAX_STORED_EVENTS = 200;
 
-const MISSING_VERTICAL_MESSAGE =
-  "SharePoint list is missing the 'Vertical' column. Add it to the IT Asset Register list (see docs/DEPLOY.md), then try again.";
+const OPTIONAL_COLUMNS = ["Vertical", "Make", "Model"];
 
 /** Graph rejects writes to a column the list doesn't have; say which one. */
-function missingVerticalColumnError(status, body) {
-  if (status !== 400 || !/vertical/i.test(body || "")) return null;
-  const err = new Error(MISSING_VERTICAL_MESSAGE);
+function missingColumnError(status, body) {
+  if (status !== 400) return null;
+  const column = OPTIONAL_COLUMNS.find((c) => new RegExp(`\\b${c}\\b`).test(body || ""));
+  if (!column) return null;
+  const err = new Error(
+    `SharePoint list is missing the '${column}' column. Add it to the IT Asset Register list (see docs/DEPLOY.md), then try again.`
+  );
   err.statusCode = 400;
   return err;
 }
@@ -444,6 +449,8 @@ function assetInputToSpFields(input, assetId = null) {
   // Only sent when set, so items without a vertical still save on a list
   // that does not have the Vertical column yet.
   if (input.vertical) fields.Vertical = input.vertical;
+  if (input.make) fields.Make = input.make;
+  if (input.model) fields.Model = input.model;
 
   if (assetId) {
     fields.AssetId = assetId;
@@ -537,7 +544,7 @@ async function createAsset(userToken, input) {
 
   if (res.status !== 201 && res.status !== 200) {
     throw (
-      missingVerticalColumnError(res.status, JSON.stringify(res.data)) ||
+      missingColumnError(res.status, JSON.stringify(res.data)) ||
       new Error(`Graph create failed (${res.status}): ${JSON.stringify(res.data)}`)
     );
   }
@@ -594,7 +601,7 @@ async function updateAsset(userToken, id, input, ifMatchEtag = null) {
 
   if (res.status !== 200 && res.status !== 204) {
     throw (
-      missingVerticalColumnError(res.status, JSON.stringify(res.data)) ||
+      missingColumnError(res.status, JSON.stringify(res.data)) ||
       new Error(`Graph update failed (${res.status}): ${JSON.stringify(res.data)}`)
     );
   }

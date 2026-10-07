@@ -21,13 +21,17 @@ import { generateStableAssetId, matchesAsset } from "@/lib/assetId";
 import {
   eventsForCreate,
   eventsForUpdate,
+  isDeleteLocked,
   makeEvent,
   needsReassignApproval,
+  newCustodyRecords,
   toAssetInput,
 } from "@/lib/assetWorkflow";
+import { applyConfirmations, confirmLink, fetchConfirmations } from "@/lib/confirmations";
 import { resolveAssetConflict } from "@/lib/conflictResolver";
 import {
   MailMessage,
+  buildAssignmentConfirmMail,
   buildMaintenanceMail,
   buildReassignDecisionMail,
   buildReassignRequestMail,
@@ -50,6 +54,28 @@ import type {
   AssetEvent,
   AssetInput,
 } from "@/types/asset";
+
+function appOrigin(): string {
+  if (typeof window !== "undefined" && window.location?.origin) return window.location.origin;
+  return "https://tracker.encalmhospitality.com";
+}
+
+/** "Please confirm" emails for custody records opened by this change. */
+function assignmentMails(
+  asset: Asset,
+  before: Asset["assignmentHistory"],
+  after: Asset["assignmentHistory"],
+  by: string
+): MailMessage[] {
+  return newCustodyRecords(before, after)
+    .filter((rec) => !!rec.assigneeEmail)
+    .map((rec) =>
+      buildAssignmentConfirmMail(asset, rec, by, confirmLink(appOrigin(), asset.id, rec.id))
+    );
+}
+
+const DELETE_LOCKED_MESSAGE =
+  "This device's user has confirmed receipt, so it can't be deleted until it is returned (Available) or marked Out of Order.";
 
 export interface UpdateAssetOptions {
   /** Internal: approval flows apply changes on someone else's behalf. */
@@ -86,7 +112,9 @@ export const DEMO_SAMPLE_ASSETS: Asset[] = [
   {
     id: "ENC-LAP-2026-0001",
     spItemId: "demo-1",
-    name: "MacBook Pro 16\" M3",
+    name: "ENC-DEL-LT-001",
+    make: "Apple",
+    model: "MacBook Pro 16\" M3",
     category: "Laptop",
     serialNumber: "C02G1234MD6R",
     status: "in_use",
@@ -114,7 +142,9 @@ export const DEMO_SAMPLE_ASSETS: Asset[] = [
   {
     id: "ENC-MON-2026-0002",
     spItemId: "demo-2",
-    name: "Dell UltraSharp 27\" 4K",
+    name: "ENC-HYD-MN-002",
+    make: "Dell",
+    model: "UltraSharp 27\" 4K",
     category: "Monitor",
     serialNumber: "CN0987654321",
     status: "available",
@@ -133,7 +163,9 @@ export const DEMO_SAMPLE_ASSETS: Asset[] = [
   {
     id: "ENC-PHN-2026-0003",
     spItemId: "demo-3",
-    name: "iPhone 15 Pro",
+    name: "ENC-GOA-PH-003",
+    make: "Apple",
+    model: "iPhone 15 Pro",
     category: "Phone",
     serialNumber: "F2LZ7890N6T1",
     status: "maintenance",
@@ -269,11 +301,20 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const serverItems = await apiFetchAll(token || undefined);
-      setAssets(serverItems);
+      // Mark custody records the users have confirmed (non-fatal if unavailable).
+      let items = serverItems;
+      if (token) {
+        try {
+          items = applyConfirmations(serverItems, await fetchConfirmations(token));
+        } catch (confirmErr) {
+          console.warn("Could not load assignment confirmations:", confirmErr);
+        }
+      }
+      setAssets(items);
       const now = Date.now();
       setLastSyncedAt(now);
       setIsOffline(false);
-      await updateCache(serverItems);
+      await updateCache(items);
     } catch (err: any) {
       const msg = err?.message || "Failed to load assets from SharePoint";
       console.warn("SharePoint load error:", msg);
@@ -403,11 +444,18 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Offline mode handling
+      const sendCreateMails = (saved: Asset) => {
+        for (const mail of assignmentMails(saved, [], initialHistory, user?.name || "Encalm IT")) {
+          void deliverMail(token, mail);
+        }
+      };
+
       if (!isNetworkOnline()) {
         await enqueueOfflineMutation("create", newAsset);
         const next = [newAsset, ...assets];
         setAssets(next);
         await updateCache(next);
+        sendCreateMails(newAsset);
         return newAsset;
       }
 
@@ -426,6 +474,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         const next = [confirmed, ...assets];
         setAssets(next);
         await updateCache(next);
+        sendCreateMails(confirmed);
         return confirmed;
       } catch (err: any) {
         if (!isRecoverableNetworkError(err)) {
@@ -542,6 +591,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       if (input.status === "maintenance" && existing.status !== "maintenance") {
         mails.push(buildMaintenanceMail(updatedAsset, input.notes, by));
       }
+      mails.push(...assignmentMails(updatedAsset, existing.assignmentHistory, history, by));
 
       // Demo Mode (no real email is sent)
       if (user?.isDemo) {
@@ -654,6 +704,9 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
 
       const existing = assets.find((a) => matchesAsset(a, id));
       if (!existing) return;
+      if (isDeleteLocked(existing)) {
+        throw new Error(DELETE_LOCKED_MESSAGE);
+      }
 
       // Demo Mode
       if (user?.isDemo) {
@@ -753,6 +806,9 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       const existing = assets.find((a) => matchesAsset(a, id));
       if (!existing) {
         throw new Error(`Asset ${id} not found.`);
+      }
+      if (request.action === "delete" && isDeleteLocked(existing)) {
+        throw new Error(DELETE_LOCKED_MESSAGE);
       }
 
       const fullRequest: import("@/types/asset").ApprovalRequest = {

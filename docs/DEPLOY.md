@@ -203,6 +203,9 @@ The app maps SharePoint columns to its `Asset` type:
 | assignee | `AssignedTo.Title`, `Assign` |
 | location | `Location` — stored as `<SITE>` or `<SITE> — <terminal/desk>`, where SITE is DEL, HYD, GOA, BUG (Bhogapuram) or NAG |
 | vertical | `Vertical` |
+| name (Host Name) | `Title` |
+| make | `Make` |
+| model | `Model` |
 
 ### Required column: `Vertical`
 
@@ -226,5 +229,40 @@ fails with "SharePoint list is missing the
 
 A **Single line of text** column named `Vertical` also works.
 
+### Required columns: `Make` and `Model`
+
+Add two **Single line of text** columns named exactly `Make` and `Model`
+(not required in SharePoint; the app requires them on the form). Without them,
+saving a device from the form fails with "SharePoint list is missing the
+'Make' column" (or 'Model').
+
 If your column names differ, edit `fromSpItem()` in `lib/sharepoint.ts` and
 `spItemToAsset()` in `server/sharepoint-api.js` (the two must match).
+
+### Assignment confirmations: `Asset Confirmations` list
+
+When IT assigns a device to someone (status **In Use** with an O365 email), the
+app emails them: *"Encalm IT has assigned an asset to you — please confirm"*,
+with a link to `/confirm`. The user signs in with Microsoft and presses
+**Confirm receipt**. That adds one item to a separate SharePoint list and emails
+**encalmit@encalm.com** (`CONFIRMATION_EMAIL` in `lib/msConfig.ts`) from the
+user's mailbox. Once confirmed, the device can't be deleted (or have deletion
+requested) until it is returned or marked Out of Order.
+
+Create the list once on `https://encalmit.sharepoint.com`:
+
+1. **New → List → Blank list**, name it exactly `Asset Confirmations`.
+2. Keep the default **Title** column (it holds the asset tag) and add:
+   - `CustodyId` — Single line of text
+   - `AssetName` — Single line of text
+   - `ConfirmedAt` — Single line of text (or Date and time, with time)
+3. **List settings → Advanced settings → Item-level permissions:**
+   - Read access: **Read all items**
+   - Create and Edit access: **Create items and edit items that were created by the user**
+4. **List settings → Permissions for this list → Stop inheriting permissions**,
+   then grant **all staff** (e.g. "Everyone except external users")
+   **Contribute** on this list only. IT keeps Full Control. Staff need no
+   access to the IT Asset Register itself.
+
+A confirmation only counts when SharePoint's own *Created By* account matches
+the email the device was assigned to, so it cannot be faked by editing fields.

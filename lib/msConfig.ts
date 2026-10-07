@@ -43,6 +43,11 @@ export const MS_CONFIG = {
     "it@encalmhospitality.com",
   ],
 
+  // Receives a copy when a user confirms receipt of an assigned device.
+  CONFIRMATION_EMAIL: "encalmit@encalm.com",
+  // SharePoint list where users record "I have received this device".
+  CONFIRMATIONS_LIST_NAME: "Asset Confirmations",
+
   // Receive maintenance notices (with the device's user).
   IT_MANAGER_EMAILS: ["it@encalmhospitality.com"],
 } as const;

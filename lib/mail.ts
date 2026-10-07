@@ -110,13 +110,67 @@ export function currentUserEmail(asset: Asset): string | undefined {
 }
 
 function deviceLines(asset: Asset): string[] {
+  const makeModel = [asset.make, asset.model].filter(Boolean).join(" ");
   return [
-    `• Device: ${asset.name}`,
+    `• Host Name: ${asset.name}`,
+    ...(makeModel ? [`• Make / Model: ${makeModel}`] : []),
     `• Asset Tag: ${asset.id}`,
     `• Category: ${asset.category}`,
     `• Serial Number: ${asset.serialNumber || "—"}`,
     `• Location: ${asset.location || "—"}`,
+    ...(asset.vertical ? [`• Vertical: ${asset.vertical}`] : []),
   ];
+}
+
+/** "Encalm IT has assigned this asset to you — please confirm." */
+export function buildAssignmentConfirmMail(
+  asset: Asset,
+  record: { assignee: string; assigneeEmail?: string },
+  assignedBy: string,
+  confirmUrl: string,
+): MailMessage {
+  return {
+    to: cleanRecipients([record.assigneeEmail]),
+    subject: `Encalm IT has assigned an asset to you — please confirm (${asset.id})`,
+    body: [
+      `Hello ${record.assignee},`,
+      "",
+      `Encalm IT has assigned the following asset to you:`,
+      "",
+      ...deviceLines(asset),
+      `• Assigned by: ${assignedBy} on ${new Date().toLocaleString()}`,
+      "",
+      `Please confirm that you have received it by opening this link and signing in with your Encalm Microsoft 365 account:`,
+      confirmUrl,
+      "",
+      `If you have not received this device, please contact Encalm IT.`,
+      "",
+      `Encalm IT Asset Management System`,
+    ].join("\n"),
+  };
+}
+
+/** Sent from the user's mailbox to Encalm IT when they confirm receipt. */
+export function buildConfirmationReceiptMail(
+  asset: { id: string; name: string },
+  userName: string,
+  userEmail: string,
+): MailMessage {
+  return {
+    to: cleanRecipients([MS_CONFIG.CONFIRMATION_EMAIL]),
+    subject: `[Confirmed] ${userName} received ${asset.name} (${asset.id})`,
+    body: [
+      `Dear Encalm IT,`,
+      "",
+      `${userName} (${userEmail}) has confirmed receipt of:`,
+      "",
+      `• Host Name: ${asset.name}`,
+      `• Asset Tag: ${asset.id}`,
+      `• Confirmed at: ${new Date().toLocaleString()}`,
+      "",
+      `Encalm IT Asset Management System`,
+    ].join("\n"),
+  };
 }
 
 export function buildMaintenanceMail(asset: Asset, reason: string, by: string): MailMessage {

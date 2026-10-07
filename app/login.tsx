@@ -1,7 +1,7 @@
 import { AlertCircle, Eye, MapPin, Shield } from "@/components/LucideIcon";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
+import { Href, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { takeReturnTo } from "@/lib/navigation";
 
 export default function LoginScreen() {
   const colors = useColors();
@@ -26,9 +27,9 @@ export default function LoginScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // If already signed in redirect to home
+  // If already signed in, go where the user was heading (e.g. an emailed link).
   React.useEffect(() => {
-    if (user) router.replace("/");
+    if (user) router.replace(takeReturnTo() as Href);
   }, [user]);
 
   // If returning from Microsoft PKCE redirect, show loading state

@@ -62,6 +62,8 @@ export function AssetForm({
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
 
   const [name, setName] = useState(initial?.name ?? "");
+  const [make, setMake] = useState(initial?.make ?? "");
+  const [model, setModel] = useState(initial?.model ?? "");
   const [serialNumber, setSerialNumber] = useState(initial?.serialNumber ?? "");
   const [status, setStatus] = useState<AssetStatus>(initial?.status ?? "new");
   // A new entry is either a New Device or issued straight away. Once a device
@@ -90,7 +92,15 @@ export function AssetForm({
   const handleSubmit = async () => {
     // 1. Asset Name is mandatory
     if (!name.trim()) {
-      setError("Asset Name is required *");
+      setError("Host Name is required *");
+      return;
+    }
+    if (!make.trim()) {
+      setError("Make is required (e.g. Dell, HP, Apple) *");
+      return;
+    }
+    if (!model.trim()) {
+      setError("Model is required (e.g. Latitude 5440) *");
       return;
     }
     // 2. Category is mandatory (including custom text if Other)
@@ -164,6 +174,8 @@ export function AssetForm({
     await onSubmit({
       input: {
         name: name.trim(),
+        make: make.trim(),
+        model: model.trim(),
         category: finalCategory,
         serialNumber: serialNumber.trim(),
         status,
@@ -195,11 +207,30 @@ export function AssetForm({
       showsVerticalScrollIndicator={false}
     >
       <Section label="Asset" colors={colors}>
-        <Field label="Name *" colors={colors}>
+        <Field label="Host Name *" colors={colors}>
           <TextInput
             value={name}
             onChangeText={setName}
-            placeholder="e.g. MacBook Pro 16″"
+            placeholder="e.g. ENC-DEL-LT-014"
+            placeholderTextColor={colors.mutedForeground}
+            autoCapitalize="characters"
+            style={inputStyle}
+          />
+        </Field>
+        <Field label="Make *" colors={colors}>
+          <TextInput
+            value={make}
+            onChangeText={setMake}
+            placeholder="e.g. Dell"
+            placeholderTextColor={colors.mutedForeground}
+            style={inputStyle}
+          />
+        </Field>
+        <Field label="Model *" colors={colors}>
+          <TextInput
+            value={model}
+            onChangeText={setModel}
+            placeholder="e.g. Latitude 5440"
             placeholderTextColor={colors.mutedForeground}
             style={inputStyle}
           />

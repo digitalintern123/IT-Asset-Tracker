@@ -160,3 +160,26 @@ export function toAssetInput(asset: Asset): AssetInput {
   const { id, createdAt, updatedAt, spItemId, _syncStatus, etag, version, ...rest } = asset;
   return rest;
 }
+
+/** The custody record of the device's current holder, if any. */
+export function openCustodyRecord(asset: Asset): AssignmentRecord | undefined {
+  return [...(asset.assignmentHistory || [])].reverse().find((r) => !r.returnedAt);
+}
+
+/**
+ * Once the current user has confirmed receipt, the device can't be deleted
+ * (or have deletion requested) until it is returned or marked Out of Order.
+ */
+export function isDeleteLocked(asset: Asset): boolean {
+  if (asset.status !== "in_use" && asset.status !== "maintenance") return false;
+  return !!openCustodyRecord(asset)?.confirmedAt;
+}
+
+/** Custody records opened by an update (present after, absent before). */
+export function newCustodyRecords(
+  before: AssignmentRecord[] | undefined,
+  after: AssignmentRecord[] | undefined,
+): AssignmentRecord[] {
+  const seen = new Set((before || []).map((r) => r.id));
+  return (after || []).filter((r) => !seen.has(r.id));
+}

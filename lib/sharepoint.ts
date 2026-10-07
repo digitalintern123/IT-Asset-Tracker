@@ -11,7 +11,7 @@ const GRAPH = "https://graph.microsoft.com/v1.0";
 
 // Memory cache for SharePoint site and list IDs
 let cachedSiteId: string | null = null;
-let cachedListId: string | null = null;
+const cachedListIds = new Map<string, string>();
 
 function mapCategory(raw: string): AssetCategory {
   const c = (raw || "").trim().toLowerCase();
@@ -114,6 +114,8 @@ export function fromSpItem(item: any): Asset {
     ),
     location: String(f.Location || ""),
     vertical: String(f.Vertical || ""),
+    make: String(f.Make || ""),
+    model: String(f.Model || ""),
     purchaseDate: String(f.PurchaseDate || ""),
     purchasePrice: Number(f.PurchasePrice) || 0,
     warrantyExpiry: f.WarrantyExpiry ? String(f.WarrantyExpiry) : null,
@@ -131,13 +133,16 @@ export function fromSpItem(item: any): Asset {
 
 const MAX_STORED_EVENTS = 200;
 
-const MISSING_VERTICAL_MESSAGE =
-  "SharePoint list is missing the 'Vertical' column. Add it to the IT Asset Register list (see docs/DEPLOY.md), then try again.";
+const OPTIONAL_COLUMNS = ["Vertical", "Make", "Model"];
 
 /** Graph rejects writes to a column the list doesn't have; say which one. */
-function missingVerticalColumnError(status: number, body: string): Error | null {
-  if (status !== 400 || !/vertical/i.test(body || "")) return null;
-  const err: any = new Error(MISSING_VERTICAL_MESSAGE);
+function missingColumnError(status: number, body: string): Error | null {
+  if (status !== 400) return null;
+  const column = OPTIONAL_COLUMNS.find((c) => new RegExp(`\\b${c}\\b`).test(body || ""));
+  if (!column) return null;
+  const err: any = new Error(
+    `SharePoint list is missing the '${column}' column. Add it to the IT Asset Register list (see docs/DEPLOY.md), then try again.`
+  );
   err.statusCode = 400;
   return err;
 }
@@ -181,6 +186,8 @@ export function toSpFields(input: AssetInput, assetId?: string): Record<string, 
   // Only sent when set, so items without a vertical still save on a list
   // that does not have the Vertical column yet.
   if (input.vertical) fields.Vertical = input.vertical;
+  if (input.make) fields.Make = input.make;
+  if (input.model) fields.Model = input.model;
 
   if (assetId) {
     fields.AssetId = assetId;
@@ -189,7 +196,7 @@ export function toSpFields(input: AssetInput, assetId?: string): Record<string, 
   return fields;
 }
 
-async function resolveSiteId(token: string): Promise<string> {
+export async function resolveSiteId(token: string): Promise<string> {
   if (cachedSiteId) return cachedSiteId;
 
   const url = new URL(MS_CONFIG.SHAREPOINT_SITE_URL);
@@ -223,9 +230,19 @@ async function resolveSiteId(token: string): Promise<string> {
 }
 
 async function resolveListId(token: string, siteId: string): Promise<string> {
-  if (cachedListId) return cachedListId;
+  return resolveListIdByName(token, siteId, MS_CONFIG.LIST_NAME);
+}
 
-  const filterUrl = `${GRAPH}/sites/${siteId}/lists?$filter=displayName eq '${encodeURIComponent(MS_CONFIG.LIST_NAME)}'`;
+/** Resolve (and cache) a SharePoint list id by its display name. */
+export async function resolveListIdByName(
+  token: string,
+  siteId: string,
+  listName: string
+): Promise<string> {
+  const cached = cachedListIds.get(listName);
+  if (cached) return cached;
+
+  const filterUrl = `${GRAPH}/sites/${siteId}/lists?$filter=displayName eq '${encodeURIComponent(listName.replace(/'/g, "''"))}'`;
   const res = await fetch(filterUrl, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -243,7 +260,7 @@ async function resolveListId(token: string, siteId: string): Promise<string> {
   if (res.ok) {
     const data = await res.json();
     if (data.value && data.value.length > 0) {
-      cachedListId = data.value[0].id;
+      cachedListIds.set(listName, data.value[0].id);
       return data.value[0].id;
     }
   }
@@ -255,19 +272,21 @@ async function resolveListId(token: string, siteId: string): Promise<string> {
 
   if (allRes.ok) {
     const data = await allRes.json();
-    const target = MS_CONFIG.LIST_NAME.trim().toLowerCase();
+    const target = listName.trim().toLowerCase();
     const match = (data.value || []).find(
       (l: any) =>
         (l.displayName && l.displayName.trim().toLowerCase() === target) ||
         (l.name && l.name.trim().toLowerCase() === target)
     );
     if (match) {
-      cachedListId = match.id;
+      cachedListIds.set(listName, match.id);
       return match.id;
     }
   }
 
-  throw new Error(`SharePoint list "${MS_CONFIG.LIST_NAME}" not found`);
+  const notFound: any = new Error(`SharePoint list "${listName}" not found`);
+  notFound.statusCode = 404;
+  throw notFound;
 }
 
 export interface SharePointService {
@@ -331,7 +350,7 @@ export async function createSharePointService(
     if (!res.ok) {
       const errBody = await res.text().catch(() => "");
       throw (
-        missingVerticalColumnError(res.status, errBody) ||
+        missingColumnError(res.status, errBody) ||
         new Error(
           `Failed to create asset in SharePoint (HTTP ${res.status}): ${errBody || res.statusText}`
         )
@@ -376,7 +395,7 @@ export async function createSharePointService(
     if (!res.ok) {
       const errBody = await res.text().catch(() => "");
       throw (
-        missingVerticalColumnError(res.status, errBody) ||
+        missingColumnError(res.status, errBody) ||
         new Error(
           `Failed to update asset in SharePoint (HTTP ${res.status}): ${errBody || res.statusText}`
         )

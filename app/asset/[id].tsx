@@ -45,6 +45,7 @@ import {
   openReassignmentEmail,
   sendAssetAssignedNotification,
 } from "@/lib/notify";
+import { isDeleteLocked, openCustodyRecord } from "@/lib/assetWorkflow";
 import { currentUserEmail } from "@/lib/mail";
 import type { Asset } from "@/types/asset";
 
@@ -126,6 +127,7 @@ export default function AssetDetailScreen() {
 
   const isAdmin = user?.role === "admin";
   const canDirectDelete = isAdmin;
+  const deleteLocked = asset ? isDeleteLocked(asset) : false;
 
   // Handle direct delete (Admin) or request modal (Non-admin)
   const handleDeletePress = () => {
@@ -585,6 +587,9 @@ export default function AssetDetailScreen() {
 
       <DetailGroup title="Identification" colors={colors}>
         <DetailRow label="Asset Tag (ID)" value={asset.id} colors={colors} />
+        <DetailRow label="Host name" value={asset.name || "—"} colors={colors} />
+        <DetailRow label="Make" value={asset.make || "—"} colors={colors} />
+        <DetailRow label="Model" value={asset.model || "—"} colors={colors} />
         <DetailRow label="Serial number" value={asset.serialNumber || "—"} colors={colors} />
         <DetailRow label="Category" value={asset.category} colors={colors} last />
       </DetailGroup>
@@ -642,6 +647,15 @@ export default function AssetDetailScreen() {
                   {record.notes ? (
                     <Text style={{ fontSize: 11, color: colors.mutedForeground, fontStyle: "italic", marginTop: 2 }}>
                       "{record.notes}"
+                    </Text>
+                  ) : null}
+                  {record.confirmedAt ? (
+                    <Text style={{ fontSize: 11, color: "#16A34A", fontFamily: "Inter_600SemiBold", marginTop: 2 }}>
+                      ✓ Confirmed by {record.confirmedBy || record.assignee} on {formatDate(record.confirmedAt)}
+                    </Text>
+                  ) : record.assigneeEmail && !record.returnedAt ? (
+                    <Text style={{ fontSize: 11, color: colors.mutedForeground, marginTop: 2 }}>
+                      Awaiting confirmation from {record.assigneeEmail}
                     </Text>
                   ) : null}
                 </View>
@@ -722,7 +736,14 @@ export default function AssetDetailScreen() {
       ) : null}
 
       {/* DELETE / REQUEST DELETION BUTTON */}
-      {canDirectDelete || user?.permissions?.canRequestApproval ? (
+      {deleteLocked ? (
+        <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
+          <Text style={{ fontSize: 12, color: colors.mutedForeground, textAlign: "center" }}>
+            Confirmed by {openCustodyRecord(asset)?.confirmedBy || asset.assignee} — deletion is disabled until
+            the device is returned (Available) or marked Out of Order.
+          </Text>
+        </View>
+      ) : canDirectDelete || user?.permissions?.canRequestApproval ? (
       <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
         <Pressable
           onPress={handleDeletePress}

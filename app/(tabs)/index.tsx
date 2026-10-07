@@ -47,6 +47,8 @@ export default function AssetsScreen() {
         a.assignee.toLowerCase().includes(q) ||
         a.location.toLowerCase().includes(q) ||
         (a.vertical || "").toLowerCase().includes(q) ||
+        (a.make || "").toLowerCase().includes(q) ||
+        (a.model || "").toLowerCase().includes(q) ||
         a.category.toLowerCase().includes(q)
       );
     });

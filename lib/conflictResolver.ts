@@ -24,6 +24,8 @@ export function resolveAssetConflict(
 
   const compareKeys: (keyof Asset)[] = [
     "name",
+    "make",
+    "model",
     "category",
     "serialNumber",
     "status",

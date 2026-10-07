@@ -6,7 +6,7 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Href, Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -16,6 +16,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AssetProvider } from "@/contexts/AssetContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { rememberReturnTo, takeReturnTo } from "@/lib/navigation";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -30,9 +31,10 @@ function AuthGate() {
     if (!loaded) return;
     const inLogin = segments[0] === "login";
     if (!user && !inLogin) {
+      rememberReturnTo();
       router.replace("/login");
     } else if (user && inLogin) {
-      router.replace("/");
+      router.replace(takeReturnTo() as Href);
     }
   }, [user, loaded, segments, router]);
 
@@ -52,6 +54,7 @@ function RootLayoutNav() {
         />
         <Stack.Screen name="asset/[id]" options={{ title: "Asset" }} />
         <Stack.Screen name="reports" options={{ title: "Report logs" }} />
+        <Stack.Screen name="confirm" options={{ title: "Confirm receipt" }} />
         <Stack.Screen
           name="scan"
           options={{ title: "Scan", presentation: "modal" }}

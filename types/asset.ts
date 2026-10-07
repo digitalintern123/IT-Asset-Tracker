@@ -30,6 +30,9 @@ export interface AssignmentRecord {
   notes?: string;
   assigneeEmail?: string;
   approvedBy?: string;
+  /** Set when the user confirmed receipt (from the Asset Confirmations list). */
+  confirmedAt?: string;
+  confirmedBy?: string;
 }
 
 export type AssetEventType =
@@ -39,7 +42,8 @@ export type AssetEventType =
   | "status_changed"
   | "reassign_requested"
   | "reassign_approved"
-  | "reassign_rejected";
+  | "reassign_rejected"
+  | "confirmed";
 
 /** One entry in an asset's audit trail (the report logs). */
 export interface AssetEvent {
@@ -76,7 +80,10 @@ export interface ApprovalRequest {
 export interface Asset {
   id: string;
   spItemId?: string;
+  /** Host name (SharePoint Title). */
   name: string;
+  make?: string;
+  model?: string;
   category: AssetCategory;
   serialNumber: string;
   status: AssetStatus;
