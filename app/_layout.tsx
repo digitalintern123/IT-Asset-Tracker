@@ -51,6 +51,7 @@ function RootLayoutNav() {
           options={{ title: "New asset", presentation: "modal" }}
         />
         <Stack.Screen name="asset/[id]" options={{ title: "Asset" }} />
+        <Stack.Screen name="reports" options={{ title: "Report logs" }} />
         <Stack.Screen
           name="scan"
           options={{ title: "Scan", presentation: "modal" }}

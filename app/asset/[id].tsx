@@ -41,6 +41,8 @@ import {
   openReassignmentEmail,
   sendAssetAssignedNotification,
 } from "@/lib/notify";
+import { currentUserEmail } from "@/lib/mail";
+import type { Asset } from "@/types/asset";
 
 function formatDate(d?: string | null): string {
   if (!d) return "—";
@@ -53,6 +55,23 @@ function formatDate(d?: string | null): string {
   } catch {
     return d;
   }
+}
+
+/** True when a reassignment was filed for IT Admin approval instead of applied. */
+function isPendingReassign(result: Asset | undefined, requestedAssignee: string): boolean {
+  const req = result?.approvalRequest;
+  return (
+    !!req &&
+    req.status === "pending" &&
+    req.action === "reassign" &&
+    (result?.assignee || "").trim().toLowerCase() !== requestedAssignee.trim().toLowerCase()
+  );
+}
+
+function showPendingReassignNotice(newAssignee: string) {
+  const msg = `Reassignment to ${newAssignee} has been sent to IT Admin for approval. The device stays with its current user until it is approved.`;
+  if (Platform.OS === "web") window.alert(msg);
+  else Alert.alert("Sent for approval", msg);
 }
 
 export default function AssetDetailScreen() {
@@ -194,7 +213,7 @@ export default function AssetDetailScreen() {
     setReassignSubmitting(true);
     try {
       const prevAssignee = asset.assignee;
-      await reassignAsset(asset.id, {
+      const result = await reassignAsset(asset.id, {
         newAssignee: reassignName.trim(),
         assigneeEmail: reassignEmail.trim() || undefined,
         location: reassignLocation.trim() || undefined,
@@ -202,6 +221,11 @@ export default function AssetDetailScreen() {
       });
 
       setReassignModalOpen(false);
+
+      if (isPendingReassign(result, reassignName.trim())) {
+        showPendingReassignNotice(reassignName.trim());
+        return;
+      }
 
       if (reassignEmail.trim()) {
         await openReassignmentEmail(
@@ -291,13 +315,21 @@ export default function AssetDetailScreen() {
         />
         <AssetForm
           initial={asset}
+          initialAssigneeEmail={currentUserEmail(asset)}
           submitLabel="Save changes"
           submitting={submitting}
           onSubmit={async ({ input, assigneeEmail }) => {
             setSubmitting(true);
             try {
               const prev = asset;
-              const updated = await updateAsset(asset.id, input);
+              const updated = await updateAsset(asset.id, input, {
+                assigneeEmail: assigneeEmail || undefined,
+              });
+              if (isPendingReassign(updated, input.assignee)) {
+                setEditing(false);
+                showPendingReassignNotice(input.assignee);
+                return;
+              }
               const fromName = user?.name ?? "Asset Tracker";
               const newlyAssigned =
                 updated &&
@@ -467,6 +499,17 @@ export default function AssetDetailScreen() {
                 >
                   "{asset.approvalRequest.reason}"
                 </Text>
+                {asset.approvalRequest.action === "reassign" && asset.approvalRequest.pendingChanges?.assignee ? (
+                  <Text
+                    style={{
+                      fontFamily: "Inter_600SemiBold",
+                      color: "#3E2723",
+                      marginTop: 4,
+                    }}
+                  >
+                    New user: {asset.approvalRequest.pendingChanges.assignee}
+                  </Text>
+                ) : null}
               </View>
             </View>
 

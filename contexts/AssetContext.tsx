@@ -18,7 +18,21 @@ import {
   apiUpdateAsset,
 } from "@/lib/api";
 import { generateStableAssetId, matchesAsset } from "@/lib/assetId";
+import {
+  eventsForCreate,
+  eventsForUpdate,
+  makeEvent,
+  needsReassignApproval,
+  toAssetInput,
+} from "@/lib/assetWorkflow";
 import { resolveAssetConflict } from "@/lib/conflictResolver";
+import {
+  MailMessage,
+  buildMaintenanceMail,
+  buildReassignDecisionMail,
+  buildReassignRequestMail,
+  deliverMail,
+} from "@/lib/mail";
 import { MS_CONFIG, isMsConfigured } from "@/lib/msConfig";
 import {
   drainOfflineQueue,
@@ -31,10 +45,23 @@ import {
 } from "@/lib/sharepoint";
 import { validateStatusTransition } from "@/lib/statusModel";
 import type {
+  ApprovalRequest,
   Asset,
+  AssetEvent,
   AssetInput,
-  AssignmentRecord,
 } from "@/types/asset";
+
+export interface UpdateAssetOptions {
+  /** Internal: approval flows apply changes on someone else's behalf. */
+  skipPermissionCheck?: boolean;
+  /** Set when an IT Admin approved this change (recorded in custody + logs). */
+  approvedBy?: string;
+  /** Email of the new user, kept in the custody record for notices. */
+  assigneeEmail?: string;
+  reason?: string;
+  extraEvents?: AssetEvent[];
+  extraMails?: MailMessage[];
+}
 
 const CACHE_KEY = "@encalm/asset_cache_v3";
 
@@ -138,11 +165,11 @@ interface AssetContextValue {
   lastSyncedAt: number | null;
   isOffline: boolean;
   getAsset: (id: string) => Asset | undefined;
-  addAsset: (input: AssetInput) => Promise<Asset>;
+  addAsset: (input: AssetInput, opts?: { assigneeEmail?: string }) => Promise<Asset>;
   updateAsset: (
     id: string,
     input: AssetInput,
-    opts?: { skipPermissionCheck?: boolean }
+    opts?: UpdateAssetOptions
   ) => Promise<Asset | undefined>;
   deleteAsset: (id: string) => Promise<void>;
   reassignAsset: (
@@ -321,14 +348,14 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
 
   // 4. Create asset (Strict status + Stable ID + Assignment History + Offline queue)
   const addAsset = useCallback(
-    async (input: AssetInput): Promise<Asset> => {
+    async (input: AssetInput, opts?: { assigneeEmail?: string }): Promise<Asset> => {
       // 1. RBAC check
       if (user?.permissions && !user.permissions.canCreateAsset) {
         throw new Error("Unauthorized: Your role does not allow creating new assets.");
       }
 
-      // 2. Strict Status Lifecycle validation
-      const statusCheck = validateStatusTransition("available", input.status, {
+      // 2. Strict Status Lifecycle validation (a new entry starts as "New Device")
+      const statusCheck = validateStatusTransition("new", input.status, {
         assignee: input.assignee,
         notes: input.notes,
         isAdmin: user?.role === "admin",
@@ -340,24 +367,18 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       // 3. Stable Asset ID generation
       const stableId = generateStableAssetId(input.category, assets);
 
-      // 4. Initialize Assignment History if assigned
-      const initialHistory: AssignmentRecord[] = [];
-      if (input.status === "in_use" && input.assignee?.trim()) {
-        initialHistory.push({
-          id: `hist_${Date.now()}`,
-          assignee: input.assignee.trim(),
-          assignedBy: user?.name || "IT Staff",
-          assignedAt: new Date().toISOString(),
-          location: input.location,
-          notes: "Initial registration assignment",
-        });
-      }
+      // 4. Initial custody history + audit trail
+      const { history: initialHistory, events: initialEvents } = eventsForCreate(input, {
+        by: user?.name || "IT Staff",
+        assigneeEmail: opts?.assigneeEmail,
+      });
 
       const newAsset: Asset = {
         ...input,
         id: stableId,
         spItemId: user?.isDemo ? String(assets.length + 1) : undefined,
         assignmentHistory: initialHistory,
+        events: initialEvents,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         _syncStatus: user?.isDemo ? "synced" : isNetworkOnline() ? "synced" : "pending_create",
@@ -427,9 +448,10 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
   const updateAsset = useCallback(
     async (
       id: string,
-      input: AssetInput,
-      opts?: { skipPermissionCheck?: boolean }
+      requestedInput: AssetInput,
+      opts?: UpdateAssetOptions
     ): Promise<Asset | undefined> => {
+      let input = requestedInput;
       // 1. RBAC check
       if (!opts?.skipPermissionCheck && user?.permissions && !user.permissions.canEditAsset) {
         throw new Error("Unauthorized: Your role does not allow editing assets.");
@@ -450,40 +472,75 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         throw new Error(statusCheck.error);
       }
 
-      // 3. Custody & Assignment History logging
-      let history = [...(existing.assignmentHistory || [])];
-      const assigneeChanged = (existing.assignee || "").trim() !== (input.assignee || "").trim();
-      const statusChanged = existing.status !== input.status;
+      const by = user?.name || "IT Staff";
+      const extraEvents: AssetEvent[] = [...(opts?.extraEvents || [])];
+      const mails: MailMessage[] = [...(opts?.extraMails || [])];
 
-      if (assigneeChanged || statusChanged) {
-        // Close open custody records if returned or reassigned
-        if (input.status === "available" || assigneeChanged) {
-          history = history.map((rec) =>
-            rec.returnedAt ? rec : { ...rec, returnedAt: new Date().toISOString() }
-          );
-        }
-        // If newly assigned in use, add new record
-        if (input.status === "in_use" && input.assignee?.trim()) {
-          history.push({
-            id: `hist_${Date.now()}`,
+      // 3. Moving an In Use device to another user needs IT Admin approval.
+      //    Nothing changes yet: the device stays with its current user and a
+      //    pending reassignment request is recorded instead.
+      if (!opts?.approvedBy && needsReassignApproval(existing, input, user?.role === "admin")) {
+        const request: ApprovalRequest = {
+          id: `appr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          action: "reassign",
+          status: "pending",
+          requesterName: by,
+          requesterEmail: user?.email || "",
+          requestedAt: new Date().toISOString(),
+          reason: opts?.reason || input.notes || "Reassignment requested",
+          pendingChanges: {
+            status: "in_use",
             assignee: input.assignee.trim(),
-            assignedBy: user?.name || "IT Staff",
-            assignedAt: new Date().toISOString(),
+            assigneeEmail: opts?.assigneeEmail,
             location: input.location,
-            notes: input.notes || "Custody transferred",
-          });
-        }
+            notes: input.notes,
+          },
+        };
+        // Keep the technician's other edits; only the handover waits for approval.
+        input = {
+          ...input,
+          status: existing.status,
+          assignee: existing.assignee,
+          location: existing.location,
+          approvalRequest: request,
+        };
+        extraEvents.push(
+          makeEvent("reassign_requested", {
+            by,
+            assignee: request.pendingChanges!.assignee,
+            assigneeEmail: opts?.assigneeEmail,
+            notes: request.reason,
+          })
+        );
+        mails.push(buildReassignRequestMail(existing, request));
       }
+
+      // 4. Custody history + audit trail (report logs). An admin reassigning
+      //    an In Use device approves their own change.
+      const selfApproved =
+        user?.role === "admin" && needsReassignApproval(existing, input, false) ? by : undefined;
+      const { history, events: changeEvents } = eventsForUpdate(existing, input, {
+        by,
+        approvedBy: opts?.approvedBy || selfApproved,
+        assigneeEmail: opts?.assigneeEmail,
+        reason: opts?.reason,
+      });
+      const events = [...(existing.events || []), ...changeEvents, ...extraEvents];
 
       const updatedAsset: Asset = {
         ...existing,
         ...input,
         assignmentHistory: history,
+        events,
         updatedAt: new Date().toISOString(),
         _syncStatus: user?.isDemo ? "synced" : isNetworkOnline() ? "synced" : "pending_update",
       };
 
-      // Demo Mode
+      if (input.status === "maintenance" && existing.status !== "maintenance") {
+        mails.push(buildMaintenanceMail(updatedAsset, input.notes, by));
+      }
+
+      // Demo Mode (no real email is sent)
       if (user?.isDemo) {
         const next = assets.map((a) => (matchesAsset(a, id) ? updatedAsset : a));
         setAssets(next);
@@ -498,12 +555,24 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         );
       }
 
+      // Emails go out once the change is saved (or queued offline).
+      const sendMails = () => {
+        for (const mail of mails) {
+          void deliverMail(token, mail).then((outcome) => {
+            if (outcome === "failed") {
+              setSyncError(`Could not send "${mail.subject}". Please email it manually.`);
+            }
+          });
+        }
+      };
+
       // Offline mode handling
       if (!isNetworkOnline()) {
         await enqueueOfflineMutation("update", updatedAsset, existing.etag);
         const next = assets.map((a) => (matchesAsset(a, id) ? updatedAsset : a));
         setAssets(next);
         await updateCache(next);
+        sendMails();
         return updatedAsset;
       }
 
@@ -523,12 +592,14 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
           ...updatedAsset,
           ...confirmedUpdated,
           assignmentHistory: history,
+          events,
           _syncStatus: "synced" as const,
         };
 
         const next = assets.map((a) => (matchesAsset(a, id) ? merged : a));
         setAssets(next);
         await updateCache(next);
+        sendMails();
         return merged;
       } catch (err: any) {
         // Concurrency conflict detection (412 or Conflict)
@@ -547,6 +618,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
           const next = assets.map((a) => (matchesAsset(a, id) ? conflict.mergedAsset : a));
           setAssets(next);
           await updateCache(next);
+          sendMails();
           return conflict.mergedAsset;
         }
 
@@ -561,12 +633,13 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         const next = assets.map((a) => (matchesAsset(a, id) ? updatedAsset : a));
         setAssets(next);
         await updateCache(next);
+        sendMails();
         return updatedAsset;
       } finally {
         setSyncing(false);
       }
     },
-    [user?.accessToken, user?.isDemo, user?.permissions, user?.role, user?.name, assets, getValidAccessToken, updateCache]
+    [user?.accessToken, user?.isDemo, user?.permissions, user?.role, user?.name, user?.email, assets, getValidAccessToken, updateCache]
   );
 
   // 6. Delete asset
@@ -648,47 +721,20 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         throw new Error(`Asset ${id} not found.`);
       }
 
-      const prevHistory: AssignmentRecord[] = Array.isArray(existing.assignmentHistory)
-        ? [...existing.assignmentHistory]
-        : [];
-
-      // Close out active custody if previous assignee existed
-      const nowIso = new Date().toISOString();
-      const updatedHistory: AssignmentRecord[] = prevHistory.map((rec) => {
-        if (!rec.returnedAt) {
-          return { ...rec, returnedAt: nowIso };
-        }
-        return rec;
-      });
-
-      // Append new custody record
-      const newRecord: AssignmentRecord = {
-        id: `hist_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        assignee: data.newAssignee,
-        assignedBy: user?.name || "IT Staff",
-        assignedAt: nowIso,
-        location: data.location || existing.location,
-        notes: data.reason || "Reassigned to new custodian",
-      };
-      updatedHistory.push(newRecord);
-
-      const updatedInput: AssetInput = {
-        name: existing.name,
-        category: existing.category,
-        serialNumber: existing.serialNumber,
-        status: "in_use",
-        assignee: data.newAssignee,
-        location: data.location || existing.location,
-        purchaseDate: existing.purchaseDate,
-        purchasePrice: existing.purchasePrice,
-        warrantyExpiry: existing.warrantyExpiry,
-        notes: existing.notes,
-        assignmentHistory: updatedHistory,
-      };
-
-      return await updateAsset(id, updatedInput);
+      // updateAsset closes the old custody record, opens the new one and
+      // logs it once (or files an approval request for non-admins).
+      return await updateAsset(
+        id,
+        {
+          ...toAssetInput(existing),
+          status: "in_use",
+          assignee: data.newAssignee,
+          location: data.location || existing.location,
+        },
+        { assigneeEmail: data.assigneeEmail, reason: data.reason }
+      );
     },
-    [assets, user?.name, updateAsset]
+    [assets, updateAsset]
   );
 
   // 7. Request Action Approval (Delete, Edit, Reassign)
@@ -746,33 +792,39 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       }
 
       const req = existing.approvalRequest;
+      const approver = user?.name || "IT Administrator";
+      const decided: ApprovalRequest = {
+        ...req,
+        status: approved ? "approved" : "rejected",
+        approverName: approver,
+        approverEmail: user?.email,
+        decidedAt: new Date().toISOString(),
+        decisionNotes,
+      };
+      const decisionMail =
+        req.action === "reassign"
+          ? [buildReassignDecisionMail(existing, decided, approved, approver)]
+          : [];
 
       if (!approved) {
-        // Rejected: clear the pending approval request
-        const resolvedRequest: import("@/types/asset").ApprovalRequest = {
-          ...req,
-          status: "rejected",
-          approverName: user?.name,
-          approverEmail: user?.email,
-          decidedAt: new Date().toISOString(),
-          decisionNotes,
-        };
-
-        const updatedInput: AssetInput = {
-          name: existing.name,
-          category: existing.category,
-          serialNumber: existing.serialNumber,
-          status: existing.status,
-          assignee: existing.assignee,
-          location: existing.location,
-          purchaseDate: existing.purchaseDate,
-          purchasePrice: existing.purchasePrice,
-          warrantyExpiry: existing.warrantyExpiry,
-          notes: existing.notes,
-          assignmentHistory: existing.assignmentHistory,
-          approvalRequest: resolvedRequest,
-        };
-        await updateAsset(id, updatedInput);
+        // Rejected: nothing changes except the recorded decision.
+        await updateAsset(
+          id,
+          { ...toAssetInput(existing), approvalRequest: decided },
+          {
+            extraEvents:
+              req.action === "reassign"
+                ? [
+                    makeEvent("reassign_rejected", {
+                      by: approver,
+                      assignee: req.pendingChanges?.assignee,
+                      notes: decisionNotes,
+                    }),
+                  ]
+                : [],
+            extraMails: decisionMail,
+          }
+        );
         return;
       }
 
@@ -780,35 +832,40 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       if (req.action === "delete") {
         await deleteAsset(id);
       } else if (req.action === "reassign" && req.pendingChanges) {
-        await updateAsset(id, {
-          name: existing.name,
-          category: existing.category,
-          serialNumber: existing.serialNumber,
-          status: "in_use",
-          assignee: req.pendingChanges.assignee || existing.assignee,
-          location: req.pendingChanges.location || existing.location,
-          purchaseDate: existing.purchaseDate,
-          purchasePrice: existing.purchasePrice,
-          warrantyExpiry: existing.warrantyExpiry,
-          notes: existing.notes,
-          assignmentHistory: existing.assignmentHistory,
-          approvalRequest: undefined,
-        });
+        await updateAsset(
+          id,
+          {
+            ...toAssetInput(existing),
+            status: "in_use",
+            assignee: req.pendingChanges.assignee || existing.assignee,
+            location: req.pendingChanges.location || existing.location,
+            approvalRequest: undefined,
+          },
+          {
+            approvedBy: approver,
+            assigneeEmail: req.pendingChanges.assigneeEmail,
+            reason: req.reason,
+            extraEvents: [
+              makeEvent("reassign_approved", {
+                by: approver,
+                approvedBy: approver,
+                assignee: req.pendingChanges.assignee,
+                notes: `Requested by ${req.requesterName}${decisionNotes ? `: ${decisionNotes}` : ""}`,
+              }),
+            ],
+            extraMails: decisionMail,
+          }
+        );
       } else if (req.action === "edit" && req.pendingChanges) {
-        await updateAsset(id, {
-          name: req.pendingChanges.name ?? existing.name,
-          category: req.pendingChanges.category ?? existing.category,
-          serialNumber: req.pendingChanges.serialNumber ?? existing.serialNumber,
-          status: req.pendingChanges.status ?? existing.status,
-          assignee: req.pendingChanges.assignee ?? existing.assignee,
-          location: req.pendingChanges.location ?? existing.location,
-          purchaseDate: req.pendingChanges.purchaseDate ?? existing.purchaseDate,
-          purchasePrice: req.pendingChanges.purchasePrice ?? existing.purchasePrice,
-          warrantyExpiry: req.pendingChanges.warrantyExpiry ?? existing.warrantyExpiry,
-          notes: req.pendingChanges.notes ?? existing.notes,
-          assignmentHistory: existing.assignmentHistory,
-          approvalRequest: undefined,
-        });
+        await updateAsset(
+          id,
+          {
+            ...toAssetInput(existing),
+            ...req.pendingChanges,
+            approvalRequest: undefined,
+          },
+          { approvedBy: approver }
+        );
       }
     },
     [assets, user?.name, user?.email, updateAsset, deleteAsset]

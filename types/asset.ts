@@ -10,7 +10,9 @@ export type StandardCategory =
 
 export type AssetCategory = StandardCategory | (string & {});
 
-export type AssetStatus = "in_use" | "available" | "maintenance" | "retired";
+// "new" = brand-new device, never assigned. "retired" is shown as "Out of Order";
+// the key is kept so existing SharePoint items need no migration.
+export type AssetStatus = "new" | "in_use" | "available" | "maintenance" | "retired";
 
 export type SyncStatus =
   | "synced"
@@ -26,6 +28,31 @@ export interface AssignmentRecord {
   returnedAt?: string | null;
   location?: string;
   notes?: string;
+  assigneeEmail?: string;
+  approvedBy?: string;
+}
+
+export type AssetEventType =
+  | "created"
+  | "assigned"
+  | "returned"
+  | "status_changed"
+  | "reassign_requested"
+  | "reassign_approved"
+  | "reassign_rejected";
+
+/** One entry in an asset's audit trail (the report logs). */
+export interface AssetEvent {
+  id: string;
+  type: AssetEventType;
+  at: string;
+  by: string;
+  assignee?: string;
+  assigneeEmail?: string;
+  approvedBy?: string;
+  fromStatus?: AssetStatus;
+  toStatus?: AssetStatus;
+  notes?: string;
 }
 
 export type ApprovalActionType = "delete" | "reassign" | "edit";
@@ -39,7 +66,7 @@ export interface ApprovalRequest {
   requesterEmail: string;
   requestedAt: string;
   reason: string;
-  pendingChanges?: Partial<AssetInput>;
+  pendingChanges?: Partial<AssetInput> & { assigneeEmail?: string };
   approverName?: string;
   approverEmail?: string;
   decidedAt?: string;
@@ -60,6 +87,7 @@ export interface Asset {
   warrantyExpiry: string | null;
   notes: string;
   assignmentHistory?: AssignmentRecord[];
+  events?: AssetEvent[];
   approvalRequest?: ApprovalRequest;
   etag?: string;
   version?: number;

@@ -1,6 +1,7 @@
 /**
  * Microsoft Azure AD + SharePoint configuration.
- * Reduced least-privilege scopes (Mail.Send eliminated).
+ * Mail.Send is used to email maintenance notices and reassignment approvals
+ * automatically; it needs admin consent in Azure (see docs/DEPLOY.md).
  */
 
 const sharepointScope =
@@ -13,6 +14,7 @@ const baseScopes = [
   "email",
   "offline_access",
   "User.Read",
+  "Mail.Send",
   sharepointScope,
 ] as const;
 
@@ -28,7 +30,6 @@ export const MS_CONFIG = {
   // Least privilege SharePoint scope: "Sites.Selected" or "Sites.ReadWrite.All"
   SHAREPOINT_SCOPE: sharepointScope,
 
-  // Minimal scopes (Mail.Send completely removed)
   SCOPES: baseScopes,
   WEB_SCOPES: baseScopes,
 
@@ -40,6 +41,9 @@ export const MS_CONFIG = {
     "admin@encalmhospitality.com",
     "it@encalmhospitality.com",
   ],
+
+  // Receive maintenance notices (with the device's user).
+  IT_MANAGER_EMAILS: ["it@encalmhospitality.com"],
 } as const;
 
 export type MsConfig = typeof MS_CONFIG;

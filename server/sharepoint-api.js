@@ -288,6 +288,9 @@ function mapCategory(raw) {
 function mapStatus(raw) {
   const s = (raw || "").trim().toLowerCase();
 
+  if (s === "new" || s === "new device" || s === "new_device") return "new";
+  if (s.includes("out of order")) return "retired";
+
   // Check negations and terminal states before the substring matches below,
   // otherwise "Not in Use" / "Unused" fall into the "use" branch.
   if (/\b(not|un|never)\b/.test(s) || s.startsWith("un")) {
@@ -338,9 +341,21 @@ function spItemToAsset(item) {
   }
 
   // Clean notes from embedded history and approval comments
+  // Extract the audit trail (report logs)
+  let events = [];
+  if (f.Notes && typeof f.Notes === "string" && f.Notes.includes("<!-- EVENTS:")) {
+    try {
+      const match = f.Notes.match(/<!-- EVENTS:(.*?) -->/);
+      if (match && match[1]) {
+        events = JSON.parse(match[1]);
+      }
+    } catch {}
+  }
+
   const cleanNotes = (f.Notes || f.Description || "")
     .replace(/<!-- HISTORY:.*? -->/g, "")
     .replace(/<!-- APPROVAL:.*? -->/g, "")
+    .replace(/<!-- EVENTS:.*? -->/g, "")
     .trim();
 
   return {
@@ -363,6 +378,7 @@ function spItemToAsset(item) {
     warrantyExpiry: f.WarrantyExpiry ? String(f.WarrantyExpiry) : null,
     notes: cleanNotes,
     assignmentHistory,
+    events,
     approvalRequest,
     etag: item["@odata.etag"] || item.eTag || null,
     version: Number(item.version || f._UIVersionString || 1),
@@ -375,13 +391,28 @@ function spItemToAsset(item) {
 /**
  * Format input fields for SharePoint write.
  */
+const MAX_STORED_EVENTS = 200;
+
+/**
+ * JSON for a <!-- KEY:... --> block in Notes. "-->" inside user text would end
+ * the comment early, so ">" is escaped (JSON.parse restores it).
+ */
+function toNotesJson(value) {
+  return JSON.stringify(value).replace(/>/g, "\\u003e");
+}
+
 function assetInputToSpFields(input, assetId = null) {
   let notesWithHistory = input.notes || "";
   if (Array.isArray(input.assignmentHistory) && input.assignmentHistory.length > 0) {
-    notesWithHistory = `${notesWithHistory}\n<!-- HISTORY:${JSON.stringify(input.assignmentHistory)} -->`.trim();
+    notesWithHistory = `${notesWithHistory}\n<!-- HISTORY:${toNotesJson(input.assignmentHistory)} -->`.trim();
   }
   if (input.approvalRequest) {
-    notesWithHistory = `${notesWithHistory}\n<!-- APPROVAL:${JSON.stringify(input.approvalRequest)} -->`.trim();
+    notesWithHistory = `${notesWithHistory}\n<!-- APPROVAL:${toNotesJson(input.approvalRequest)} -->`.trim();
+  }
+  if (Array.isArray(input.events) && input.events.length > 0) {
+    // Keep the newest events so the Notes field stays within SharePoint's limit.
+    const recent = input.events.slice(-MAX_STORED_EVENTS);
+    notesWithHistory = `${notesWithHistory}\n<!-- EVENTS:${toNotesJson(recent)} -->`.trim();
   }
 
   const fields = {

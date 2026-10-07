@@ -6,6 +6,9 @@
 import type { AssetStatus } from "@/types/asset";
 
 export const ALLOWED_TRANSITIONS: Record<AssetStatus, AssetStatus[]> = {
+  // Nothing moves back to "new": once a device has been issued it is
+  // "available" when returned.
+  new: ["new", "in_use", "maintenance", "retired"],
   available: ["available", "in_use", "maintenance", "retired"],
   in_use: ["in_use", "available", "maintenance", "retired"],
   maintenance: ["maintenance", "available", "in_use", "retired"],
@@ -42,7 +45,7 @@ export function validateStatusTransition(
       return {
         valid: false,
         error:
-          "Retired assets are decommissioned. Only IT Administrators can override terminal retirement.",
+          "Out of Order devices are decommissioned. Only IT Administrators can bring them back into service.",
       };
     }
   }

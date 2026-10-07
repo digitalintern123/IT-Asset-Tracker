@@ -58,7 +58,12 @@ export function AssetForm({
 
   const [name, setName] = useState(initial?.name ?? "");
   const [serialNumber, setSerialNumber] = useState(initial?.serialNumber ?? "");
-  const [status, setStatus] = useState<AssetStatus>(initial?.status ?? "available");
+  const [status, setStatus] = useState<AssetStatus>(initial?.status ?? "new");
+  // A new entry is either a New Device or issued straight away. Once a device
+  // has left "New Device" it never goes back (returned devices are "Available").
+  const statusOptions: AssetStatus[] = !initial
+    ? ["new", "in_use"]
+    : STATUSES.filter((st) => st !== "new" || initial.status === "new");
   const [assignee, setAssignee] = useState(initial?.assignee ?? "");
   const [assigneeEmail, setAssigneeEmail] = useState(initialAssigneeEmail ?? "");
   const [location, setLocation] = useState(initial?.location ?? "");
@@ -95,17 +100,17 @@ export function AssetForm({
       setError("Asset Status is required *");
       return;
     }
-    // 5. Assignee Name is mandatory
-    if (!assignee.trim()) {
+    // 5. Assignee Name is mandatory for a device that is In Use
+    if (status === "in_use" && !assignee.trim()) {
       setError("Assigned to (Custodian name) is required *");
       return;
     }
-    // 6. Assignee Email is mandatory
-    if (!assigneeEmail.trim()) {
+    // 6. Assignee Email is mandatory for a device that is In Use
+    if (status === "in_use" && !assigneeEmail.trim()) {
       setError("Assignee O365 email is required *");
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(assigneeEmail.trim())) {
+    if (assigneeEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(assigneeEmail.trim())) {
       setError("Please enter a valid email address (e.g. name@encalm.com) *");
       return;
     }
@@ -378,7 +383,7 @@ export function AssetForm({
                 { backgroundColor: colors.card, borderColor: colors.border },
               ]}
             >
-              {STATUSES.map((st, i) => {
+              {statusOptions.map((st, i) => {
                 const isSelected = st === status;
                 return (
                   <Pressable
@@ -392,7 +397,7 @@ export function AssetForm({
                     }}
                     style={({ pressed }) => [
                       styles.dropdownOption,
-                      i < STATUSES.length - 1 && {
+                      i < statusOptions.length - 1 && {
                         borderBottomWidth: StyleSheet.hairlineWidth,
                         borderBottomColor: colors.border,
                       },
@@ -445,7 +450,7 @@ export function AssetForm({
             </View>
           ) : null}
         </Field>
-        <Field label="Assigned to *" colors={colors}>
+        <Field label={status === "in_use" ? "Assigned to *" : "Assigned to"} colors={colors}>
           <TextInput
             value={assignee}
             onChangeText={setAssignee}
@@ -454,7 +459,7 @@ export function AssetForm({
             style={inputStyle}
           />
         </Field>
-        <Field label="Assignee O365 email *" colors={colors}>
+        <Field label={status === "in_use" ? "Assignee O365 email *" : "Assignee O365 email"} colors={colors}>
           <TextInput
             value={assigneeEmail}
             onChangeText={setAssigneeEmail}

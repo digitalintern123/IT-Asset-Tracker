@@ -84,6 +84,18 @@ export function resolveAssetConflict(
     });
   }
 
+  // Preserve both sides' audit events
+  if (localAsset.events || serverAsset.events) {
+    const seenEvents = new Set<string>();
+    merged.events = [...(serverAsset.events || []), ...(localAsset.events || [])]
+      .filter((evt) => {
+        if (seenEvents.has(evt.id)) return false;
+        seenEvents.add(evt.id);
+        return true;
+      })
+      .sort((a, b) => a.at.localeCompare(b.at));
+  }
+
   merged.updatedAt = new Date().toISOString();
   merged.etag = serverAsset.etag;
   merged.version = (serverAsset.version || 1) + 1;

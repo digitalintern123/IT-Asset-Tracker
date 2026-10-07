@@ -152,6 +152,10 @@ Native (Android) builds use `asset-tracker://auth/callback`
 **API permissions (Microsoft Graph delegated, admin consent granted):**
 - `User.Read`
 - `Sites.ReadWrite.All` (or `Sites.Selected` for least privilege)
+- `Mail.Send` — the app emails maintenance notices (to the device's user and
+  `IT_MANAGER_EMAILS` in `lib/msConfig.ts`) and reassignment approval requests
+  and decisions from the signed-in user's mailbox. Grant admin consent after
+  adding it; until then the app opens a pre-filled draft instead.
 - `openid`, `profile`, `email`, `offline_access`
 
 **App roles.** Users without an `Admin` or `Technician` app role (and not in

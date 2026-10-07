@@ -28,6 +28,7 @@ export function getCategoryIcon(cat?: string | null): string {
 }
 
 export const STATUSES: AssetStatus[] = [
+  "new",
   "in_use",
   "available",
   "maintenance",
@@ -35,16 +36,18 @@ export const STATUSES: AssetStatus[] = [
 ];
 
 export const STATUS_LABELS: Record<AssetStatus, string> = {
+  new: "New Device",
   in_use: "In Use",
   available: "Available",
   maintenance: "Maintenance",
-  retired: "Retired",
+  retired: "Out of Order",
 };
 
 export const STATUS_COLORS: Record<
   AssetStatus,
   { bg: string; fg: string; dot: string }
 > = {
+  new: { bg: "#123A4A", fg: "#7DD3FC", dot: "#38BDF8" },
   in_use: { bg: "#162447", fg: "#E6C896", dot: "#CDA45E" },
   available: { bg: "#1F4733", fg: "#86EFAC", dot: "#22C55E" },
   maintenance: { bg: "#4A3A12", fg: "#FCD34D", dot: "#F59E0B" },
