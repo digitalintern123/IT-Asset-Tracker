@@ -312,6 +312,14 @@ export async function createSharePointService(
         "Conflict: Asset was modified by another user (ETag mismatch)."
       );
       conflictErr.statusCode = 412;
+      // Attach the current SharePoint record so the caller can merge the
+      // other user's changes with this edit instead of guessing.
+      try {
+        const currentRes = await fetch(`${base}/${spItemId}?expand=fields`, { headers });
+        if (currentRes.ok) {
+          conflictErr.serverAsset = fromSpItem(await currentRes.json());
+        }
+      } catch {}
       throw conflictErr;
     }
 
@@ -334,6 +342,8 @@ export async function createSharePointService(
       id: spItemId,
       spItemId,
       ...input,
+      // Carry the caller's etag forward so the next update still sends If-Match.
+      etag: ifMatchEtag ?? undefined,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       _syncStatus: "synced",
