@@ -113,6 +113,7 @@ export function fromSpItem(item: any): Asset {
       ""
     ),
     location: String(f.Location || ""),
+    vertical: String(f.Vertical || ""),
     purchaseDate: String(f.PurchaseDate || ""),
     purchasePrice: Number(f.PurchasePrice) || 0,
     warrantyExpiry: f.WarrantyExpiry ? String(f.WarrantyExpiry) : null,
@@ -129,6 +130,17 @@ export function fromSpItem(item: any): Asset {
 }
 
 const MAX_STORED_EVENTS = 200;
+
+const MISSING_VERTICAL_MESSAGE =
+  "SharePoint list is missing the 'Vertical' column. Add it to the IT Asset Register list (see docs/DEPLOY.md), then try again.";
+
+/** Graph rejects writes to a column the list doesn't have; say which one. */
+function missingVerticalColumnError(status: number, body: string): Error | null {
+  if (status !== 400 || !/vertical/i.test(body || "")) return null;
+  const err: any = new Error(MISSING_VERTICAL_MESSAGE);
+  err.statusCode = 400;
+  return err;
+}
 
 /**
  * JSON for a <!-- KEY:... --> block in Notes. "-->" inside user text would end
@@ -165,6 +177,10 @@ export function toSpFields(input: AssetInput, assetId?: string): Record<string, 
     WarrantyExpiry: input.warrantyExpiry || null,
     Notes: notesWithHistory,
   };
+
+  // Only sent when set, so items without a vertical still save on a list
+  // that does not have the Vertical column yet.
+  if (input.vertical) fields.Vertical = input.vertical;
 
   if (assetId) {
     fields.AssetId = assetId;
@@ -314,8 +330,11 @@ export async function createSharePointService(
 
     if (!res.ok) {
       const errBody = await res.text().catch(() => "");
-      throw new Error(
-        `Failed to create asset in SharePoint (HTTP ${res.status}): ${errBody || res.statusText}`
+      throw (
+        missingVerticalColumnError(res.status, errBody) ||
+        new Error(
+          `Failed to create asset in SharePoint (HTTP ${res.status}): ${errBody || res.statusText}`
+        )
       );
     }
 
@@ -356,8 +375,11 @@ export async function createSharePointService(
 
     if (!res.ok) {
       const errBody = await res.text().catch(() => "");
-      throw new Error(
-        `Failed to update asset in SharePoint (HTTP ${res.status}): ${errBody || res.statusText}`
+      throw (
+        missingVerticalColumnError(res.status, errBody) ||
+        new Error(
+          `Failed to update asset in SharePoint (HTTP ${res.status}): ${errBody || res.statusText}`
+        )
       );
     }
 

@@ -29,6 +29,7 @@ export function resolveAssetConflict(
     "status",
     "assignee",
     "location",
+    "vertical",
     "purchaseDate",
     "purchasePrice",
     "warrantyExpiry",

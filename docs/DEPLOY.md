@@ -201,7 +201,30 @@ The app maps SharePoint columns to its `Asset` type:
 | serialNumber | `SerialNumber` |
 | status | `Status`, `AssetStatus` (fuzzy-matched to in_use / available / maintenance / retired) |
 | assignee | `AssignedTo.Title`, `Assign` |
-| location | `Location` |
+| location | `Location` — stored as `<SITE>` or `<SITE> — <terminal/desk>`, where SITE is DEL, HYD, GOA, BUG (Bhogapuram) or NAG |
+| vertical | `Vertical` |
+
+### Required column: `Vertical`
+
+The app writes the company (vertical) of each device to a `Vertical` column.
+Add it to the **IT Asset Register** list **before deploying** this version,
+otherwise saving a device from the form (which now requires a Vertical)
+fails with "SharePoint list is missing the
+'Vertical' column":
+
+1. Open the list → **+ Add column** → **Choice**.
+2. Name: `Vertical` (exactly this; it is the internal name the app uses).
+3. Choices, one per line:
+   ```
+   ENCALM HOSPITALITY PVT LTD
+   ENCALM EATS PVT LTD
+   ENCALM SKYPLATES
+   ENCALM HOTEL
+   ```
+4. Leave "Require that this column contains information" **off** (existing
+   items have no value yet; the app requires it on the form instead) → Save.
+
+A **Single line of text** column named `Vertical` also works.
 
 If your column names differ, edit `fromSpItem()` in `lib/sharepoint.ts` and
 `spItemToAsset()` in `server/sharepoint-api.js` (the two must match).

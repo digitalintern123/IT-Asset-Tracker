@@ -373,6 +373,7 @@ function spItemToAsset(item) {
       ""
     ),
     location: String(f.Location || ""),
+    vertical: String(f.Vertical || ""),
     purchaseDate: String(f.PurchaseDate || ""),
     purchasePrice: Number(f.PurchasePrice) || 0,
     warrantyExpiry: f.WarrantyExpiry ? String(f.WarrantyExpiry) : null,
@@ -392,6 +393,17 @@ function spItemToAsset(item) {
  * Format input fields for SharePoint write.
  */
 const MAX_STORED_EVENTS = 200;
+
+const MISSING_VERTICAL_MESSAGE =
+  "SharePoint list is missing the 'Vertical' column. Add it to the IT Asset Register list (see docs/DEPLOY.md), then try again.";
+
+/** Graph rejects writes to a column the list doesn't have; say which one. */
+function missingVerticalColumnError(status, body) {
+  if (status !== 400 || !/vertical/i.test(body || "")) return null;
+  const err = new Error(MISSING_VERTICAL_MESSAGE);
+  err.statusCode = 400;
+  return err;
+}
 
 /**
  * JSON for a <!-- KEY:... --> block in Notes. "-->" inside user text would end
@@ -428,6 +440,10 @@ function assetInputToSpFields(input, assetId = null) {
     WarrantyExpiry: input.warrantyExpiry || null,
     Notes: notesWithHistory,
   };
+
+  // Only sent when set, so items without a vertical still save on a list
+  // that does not have the Vertical column yet.
+  if (input.vertical) fields.Vertical = input.vertical;
 
   if (assetId) {
     fields.AssetId = assetId;
@@ -520,7 +536,10 @@ async function createAsset(userToken, input) {
   );
 
   if (res.status !== 201 && res.status !== 200) {
-    throw new Error(`Graph create failed (${res.status}): ${JSON.stringify(res.data)}`);
+    throw (
+      missingVerticalColumnError(res.status, JSON.stringify(res.data)) ||
+      new Error(`Graph create failed (${res.status}): ${JSON.stringify(res.data)}`)
+    );
   }
 
   return spItemToAsset(res.data);
@@ -574,7 +593,10 @@ async function updateAsset(userToken, id, input, ifMatchEtag = null) {
   }
 
   if (res.status !== 200 && res.status !== 204) {
-    throw new Error(`Graph update failed (${res.status}): ${JSON.stringify(res.data)}`);
+    throw (
+      missingVerticalColumnError(res.status, JSON.stringify(res.data)) ||
+      new Error(`Graph update failed (${res.status}): ${JSON.stringify(res.data)}`)
+    );
   }
 
   // Fetch updated item

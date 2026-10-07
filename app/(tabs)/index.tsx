@@ -46,6 +46,7 @@ export default function AssetsScreen() {
         a.serialNumber.toLowerCase().includes(q) ||
         a.assignee.toLowerCase().includes(q) ||
         a.location.toLowerCase().includes(q) ||
+        (a.vertical || "").toLowerCase().includes(q) ||
         a.category.toLowerCase().includes(q)
       );
     });

@@ -82,6 +82,8 @@ export interface Asset {
   status: AssetStatus;
   assignee: string;
   location: string;
+  /** Company the device belongs to (SharePoint "Vertical" column). */
+  vertical?: string;
   purchaseDate: string;
   purchasePrice: number;
   warrantyExpiry: string | null;

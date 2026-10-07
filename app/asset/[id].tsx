@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import QRCode from "react-native-qrcode-svg";
 
 import { AssetForm } from "@/components/AssetForm";
+import { LocationPicker } from "@/components/LocationPicker";
 import { PeoplePicker } from "@/components/PeoplePicker";
 import { HeaderBackButton } from "@/components/HeaderBackButton";
 import {
@@ -590,7 +591,8 @@ export default function AssetDetailScreen() {
 
       <DetailGroup title="Assignment" colors={colors}>
         <DetailRow label="Assigned to" value={asset.assignee || "—"} colors={colors} />
-        <DetailRow label="Location" value={asset.location || "—"} colors={colors} last />
+        <DetailRow label="Location" value={asset.location || "—"} colors={colors} />
+        <DetailRow label="Vertical" value={asset.vertical || "—"} colors={colors} last />
       </DetailGroup>
 
       <DetailGroup title="Purchase" colors={colors}>
@@ -790,14 +792,9 @@ export default function AssetDetailScreen() {
               emailLabel="Custodian email"
             />
 
-            <Text style={[styles.inputLabel, { color: colors.mutedForeground, marginTop: 12 }]}>LOCATION / TERMINAL</Text>
-            <TextInput
-              style={[styles.textInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
-              placeholder="e.g. T3 Terminal Lounge Reception"
-              placeholderTextColor={colors.mutedForeground + "88"}
-              value={reassignLocation}
-              onChangeText={setReassignLocation}
-            />
+            <View style={{ marginTop: 12 }}>
+              <LocationPicker value={reassignLocation} onChange={setReassignLocation} />
+            </View>
 
             <Text style={[styles.inputLabel, { color: colors.mutedForeground, marginTop: 12 }]}>REASSIGNMENT REASON / HANDOVER NOTES</Text>
             <TextInput

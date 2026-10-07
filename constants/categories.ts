@@ -53,3 +53,22 @@ export const STATUS_COLORS: Record<
   maintenance: { bg: "#4A3A12", fg: "#FCD34D", dot: "#F59E0B" },
   retired: { bg: "#3A2A2A", fg: "#FCA5A5", dot: "#EF4444" },
 };
+
+/** Encalm sites. Stored in the Location column as "<CODE>" or "<CODE> — <detail>". */
+export const LOCATIONS = [
+  { code: "DEL", name: "Delhi" },
+  { code: "HYD", name: "Hyderabad" },
+  { code: "GOA", name: "Goa" },
+  { code: "BUG", name: "Bhogapuram" },
+  { code: "NAG", name: "Nagpur" },
+] as const;
+
+export type LocationCode = (typeof LOCATIONS)[number]["code"];
+
+/** Company (vertical) a device belongs to. Stored in the SharePoint "Vertical" column. */
+export const VERTICALS = [
+  "ENCALM HOSPITALITY PVT LTD",
+  "ENCALM EATS PVT LTD",
+  "ENCALM SKYPLATES",
+  "ENCALM HOTEL",
+] as const;

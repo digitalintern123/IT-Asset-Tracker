@@ -16,9 +16,13 @@ import {
   STATUSES,
   STATUS_COLORS,
   STATUS_LABELS,
+  VERTICALS,
   getCategoryIcon,
 } from "@/constants/categories";
+import { parseLocation } from "@/lib/location";
+import { LocationPicker } from "@/components/LocationPicker";
 import { PeoplePicker } from "@/components/PeoplePicker";
+import { SelectField } from "@/components/SelectField";
 import { useColors } from "@/hooks/useColors";
 import type { Asset, AssetInput, AssetStatus, StandardCategory } from "@/types/asset";
 
@@ -68,6 +72,9 @@ export function AssetForm({
   const [assignee, setAssignee] = useState(initial?.assignee ?? "");
   const [assigneeEmail, setAssigneeEmail] = useState(initialAssigneeEmail ?? "");
   const [location, setLocation] = useState(initial?.location ?? "");
+  const [vertical, setVertical] = useState<string>(
+    (VERTICALS as readonly string[]).includes(initial?.vertical ?? "") ? initial!.vertical! : "",
+  );
   const [purchaseDate, setPurchaseDate] = useState(
     initial?.purchaseDate ?? new Date().toISOString().slice(0, 10),
   );
@@ -115,9 +122,14 @@ export function AssetForm({
       setError("Please enter a valid email address (e.g. name@encalm.com) *");
       return;
     }
-    // 7. Location is mandatory
-    if (!location.trim()) {
-      setError("Location / Airport terminal is required *");
+    // 7. Location site (DEL/HYD/GOA/BUG/NAG) is mandatory
+    if (!parseLocation(location).site) {
+      setError("Please select a Location (DEL, HYD, GOA, BUG or NAG) *");
+      return;
+    }
+    // 7b. Vertical (company) is mandatory
+    if (!vertical) {
+      setError("Please select the Vertical (company) *");
       return;
     }
     // 8. Purchase Date is mandatory
@@ -157,6 +169,7 @@ export function AssetForm({
         status,
         assignee: assignee.trim(),
         location: location.trim(),
+        vertical,
         purchaseDate: purchaseDate.trim(),
         purchasePrice: price,
         warrantyExpiry: warrantyExpiry.trim() || null,
@@ -460,15 +473,14 @@ export function AssetForm({
           nameLabel={status === "in_use" ? "Assigned to *" : "Assigned to"}
           emailLabel={status === "in_use" ? "Assignee O365 email *" : "Assignee O365 email"}
         />
-        <Field label="Location *" colors={colors}>
-          <TextInput
-            value={location}
-            onChangeText={setLocation}
-            placeholder="e.g. HQ — Floor 3 / T3 Terminal"
-            placeholderTextColor={colors.mutedForeground}
-            style={inputStyle}
-          />
-        </Field>
+        <LocationPicker value={location} onChange={setLocation} />
+        <SelectField
+          label="Vertical *"
+          value={vertical}
+          options={VERTICALS.map((v) => ({ value: v, label: v }))}
+          onChange={setVertical}
+          placeholder="Select company"
+        />
       </Section>
 
       <Section label="Purchase" colors={colors}>

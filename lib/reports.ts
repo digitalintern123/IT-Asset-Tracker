@@ -21,6 +21,8 @@ export interface ReportRow {
   at: string;
   assetId: string;
   device: string;
+  location: string;
+  vertical: string;
   type: AssetEventType;
   event: string;
   user: string;
@@ -47,6 +49,8 @@ export function flattenEvents(assets: Asset[]): ReportRow[] {
         at: evt.at,
         assetId: asset.id,
         device: asset.name,
+        location: asset.location || "",
+        vertical: asset.vertical || "",
         type: evt.type,
         event: EVENT_LABELS[evt.type] ?? evt.type,
         user: evt.assignee || "",
@@ -81,7 +85,7 @@ export function filterRows(rows: ReportRow[], f: ReportFilter): ReportRow[] {
     if (f.from && day < f.from) return false;
     if (f.to && day > f.to) return false;
     if (q) {
-      const hay = `${r.assetId} ${r.device} ${r.user} ${r.by} ${r.approvedBy} ${r.notes}`.toLowerCase();
+      const hay = `${r.assetId} ${r.device} ${r.location} ${r.vertical} ${r.user} ${r.by} ${r.approvedBy} ${r.notes}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -99,6 +103,8 @@ export function toCsv(rows: ReportRow[]): string {
     "Date",
     "Asset ID",
     "Device",
+    "Vertical",
+    "Location",
     "Event",
     "User",
     "By",
@@ -113,6 +119,8 @@ export function toCsv(rows: ReportRow[]): string {
         new Date(r.at).toLocaleString(),
         r.assetId,
         r.device,
+        r.vertical,
+        r.location,
         r.event,
         r.user,
         r.by,
