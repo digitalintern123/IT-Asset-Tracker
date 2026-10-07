@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAssets } from "@/contexts/AssetContext";
 import { useColors } from "@/hooks/useColors";
+import { goBack } from "@/lib/navigation";
 
 function parseScan(raw: string): { id?: string; serial?: string } {
   try {
@@ -224,7 +225,7 @@ export default function ScanScreen() {
             title: "Scan asset",
             headerLeft: () => (
               <Pressable
-                onPress={() => router.back()}
+                onPress={() => goBack(router)}
                 hitSlop={8}
                 style={({ pressed }) => ({
                   flexDirection: "row",
@@ -266,7 +267,7 @@ export default function ScanScreen() {
           options={{
             title: "Scan asset",
             headerLeft: () => (
-              <Pressable onPress={() => router.back()} hitSlop={8}>
+              <Pressable onPress={() => goBack(router)} hitSlop={8}>
                 <Text style={{ color: colors.primary, fontFamily: "Inter_500Medium" }}>
                   Cancel
                 </Text>
@@ -285,7 +286,7 @@ export default function ScanScreen() {
           options={{
             title: "Scan asset",
             headerLeft: () => (
-              <Pressable onPress={() => router.back()} hitSlop={8}>
+              <Pressable onPress={() => goBack(router)} hitSlop={8}>
                 <Text style={{ color: colors.primary, fontFamily: "Inter_500Medium" }}>
                   Cancel
                 </Text>
@@ -317,7 +318,7 @@ export default function ScanScreen() {
           </Text>
         </Pressable>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => goBack(router)}
           style={({ pressed }) => [
             styles.permBtn,
             { backgroundColor: colors.muted, opacity: pressed ? 0.85 : 1, marginTop: 4 },
@@ -344,7 +345,7 @@ export default function ScanScreen() {
           headerTransparent: true,
           headerTintColor: "#fff",
           headerLeft: () => (
-            <Pressable onPress={() => router.back()} hitSlop={8}>
+            <Pressable onPress={() => goBack(router)} hitSlop={8}>
               <X size={24} color="#FFFFFF" strokeWidth={2} />
             </Pressable>
           ),

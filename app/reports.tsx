@@ -1,4 +1,4 @@
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
   FlatList,
@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { HeaderBackButton } from "@/components/HeaderBackButton";
 import { Download, Lock } from "@/components/LucideIcon";
 import { STATUSES, STATUS_COLORS, STATUS_LABELS } from "@/constants/categories";
 import { useAssets } from "@/contexts/AssetContext";
@@ -84,6 +85,12 @@ export default function ReportsScreen() {
   const { assets } = useAssets();
   const { user } = useAuth();
   const [filter, setFilter] = useState<ReportFilter>({ type: "all", status: "all" });
+  const router = useRouter();
+  const headerOptions = {
+    title: "Report logs",
+    // After a refresh or a direct link there is no stack to go back to.
+    headerLeft: router.canGoBack() ? undefined : () => <HeaderBackButton />,
+  };
 
   const allRows = useMemo(() => flattenEvents(assets), [assets]);
   const rows = useMemo(() => filterRows(allRows, filter), [allRows, filter]);
@@ -91,7 +98,7 @@ export default function ReportsScreen() {
   if (user?.role !== "admin") {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]}>
-        <Stack.Screen options={{ title: "Report logs" }} />
+        <Stack.Screen options={headerOptions} />
         <Lock size={28} color={colors.mutedForeground} strokeWidth={1.8} />
         <Text style={[styles.emptyTitle, { color: colors.foreground }]}>IT Admins only</Text>
         <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
@@ -132,7 +139,7 @@ export default function ReportsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <Stack.Screen options={{ title: "Report logs" }} />
+      <Stack.Screen options={headerOptions} />
       <FlatList
         data={rows}
         keyExtractor={(r) => `${r.assetId}:${r.eventId}`}

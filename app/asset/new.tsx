@@ -7,6 +7,7 @@ import { AssetForm } from "@/components/AssetForm";
 import { useAssets } from "@/contexts/AssetContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { goBack } from "@/lib/navigation";
 import {
   openAssignmentEmail,
   sendAssetAssignedNotification,
@@ -62,7 +63,7 @@ export default function NewAssetScreen() {
           permission to register new assets. Please contact an IT Administrator.
         </Text>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => goBack(router)}
           style={{
             backgroundColor: colors.primary,
             paddingHorizontal: 20,
@@ -85,7 +86,7 @@ export default function NewAssetScreen() {
           title: "New asset",
           headerLeft: () => (
             <Pressable
-              onPress={() => router.back()}
+              onPress={() => goBack(router)}
               hitSlop={8}
               style={({ pressed }) => ({
                 flexDirection: "row",

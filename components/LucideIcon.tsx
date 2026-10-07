@@ -14,6 +14,7 @@ import {
   CheckCircle,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   ChevronUp,
   Clock,
@@ -76,6 +77,7 @@ export {
   CheckCircle,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   ChevronUp,
   Clock,
@@ -177,6 +179,7 @@ const ICON_REGISTRY: Record<string, LucideIconType> = {
   // Chevrons
   "chevron-right": ChevronRight,
   "chevron-down": ChevronDown,
+  "chevron-left": ChevronLeft,
   "chevron-up": ChevronUp,
 
   // UI Utilities

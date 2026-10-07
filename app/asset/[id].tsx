@@ -18,6 +18,7 @@ import QRCode from "react-native-qrcode-svg";
 
 import { AssetForm } from "@/components/AssetForm";
 import { PeoplePicker } from "@/components/PeoplePicker";
+import { HeaderBackButton } from "@/components/HeaderBackButton";
 import {
   AlertCircle,
   Check,
@@ -36,6 +37,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { formatRupees } from "@/lib/currency";
 import { MS_CONFIG } from "@/lib/msConfig";
+import { goBack } from "@/lib/navigation";
 import {
   openApprovalRequestEmail,
   openAssignmentEmail,
@@ -133,7 +135,7 @@ export default function AssetDetailScreen() {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
           }
           await deleteAsset(asset.id);
-          router.back();
+          goBack(router);
         } catch (err: any) {
           const msg = err?.message || "Failed to delete asset from SharePoint.";
           if (Platform.OS === "web") {
@@ -260,7 +262,7 @@ export default function AssetDetailScreen() {
       }
       await resolveApproval(asset.id, approved);
       if (approved && asset.approvalRequest?.action === "delete") {
-        router.back();
+        goBack(router);
       }
     } catch (err: any) {
       const msg = err?.message || "Failed to process approval.";
@@ -382,7 +384,8 @@ export default function AssetDetailScreen() {
       <Stack.Screen
         options={{
           title: asset.name,
-          headerLeft: undefined,
+          // After a refresh or a direct link there is no stack to go back to.
+          headerLeft: router.canGoBack() ? undefined : () => <HeaderBackButton />,
           headerRight: () => (
             <View
               style={{
