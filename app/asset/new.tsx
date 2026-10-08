@@ -9,7 +9,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { goBack } from "@/lib/navigation";
 import {
-  openAssignmentEmail,
   sendAssetAssignedNotification,
 } from "@/lib/notify";
 
@@ -131,25 +130,6 @@ export default function NewAssetScreen() {
             const fromName = user?.name ?? "Asset Tracker";
             if (asset.assignee && asset.status === "in_use") {
               await sendAssetAssignedNotification(asset, fromName);
-              if (assigneeEmail) {
-                if (Platform.OS === "web") {
-                  router.replace(`/asset/${asset.id}`);
-                  await openAssignmentEmail(asset, assigneeEmail, fromName);
-                  return;
-                }
-                Alert.alert(
-                  "Notify assignee?",
-                  `Send ${asset.assignee} an email about this assignment?`,
-                  [
-                    { text: "Skip", style: "cancel" },
-                    {
-                      text: "Send email",
-                      onPress: () =>
-                        openAssignmentEmail(asset, assigneeEmail, fromName),
-                    },
-                  ],
-                );
-              }
             }
             router.replace(`/asset/${asset.id}`);
           } catch (err: any) {

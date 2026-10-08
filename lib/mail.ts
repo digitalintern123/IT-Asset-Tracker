@@ -160,6 +160,9 @@ function escapeHtml(value: unknown): string {
 /**
  * Hand-over confirmation, in the format Corporate IT already uses
  * ("Laptop Confirmation"), sent as the IT helpdesk mailbox with IT in CC.
+ * Privacy: on a reassignment this goes to the new user, so it must only
+ * carry device data and the recipient's own name — never earlier custody
+ * records, the asset notes or the reassignment reason.
  */
 export function buildAssignmentConfirmMail(
   asset: Asset,

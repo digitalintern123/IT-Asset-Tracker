@@ -105,7 +105,7 @@ export default function ConfirmScreen() {
   } else if (wrongUser) {
     body = (
       <Notice icon="warn" colors={colors} title="This device was assigned to someone else">
-        {`It was assigned to ${record!.assignee} (${record!.assigneeEmail}), but you are signed in as ${user?.email}. Please sign in with the account the email was sent to.`}
+        {`This confirmation link was sent to a different Microsoft 365 account (you are signed in as ${user?.email}). Please sign in with the account the email was sent to.`}
       </Notice>
     );
   } else {

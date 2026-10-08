@@ -41,8 +41,6 @@ import { MS_CONFIG } from "@/lib/msConfig";
 import { goBack } from "@/lib/navigation";
 import {
   openApprovalRequestEmail,
-  openAssignmentEmail,
-  openReassignmentEmail,
   sendAssetAssignedNotification,
 } from "@/lib/notify";
 import { isDeleteLocked, openCustodyRecord } from "@/lib/assetWorkflow";
@@ -242,7 +240,6 @@ export default function AssetDetailScreen() {
     }
     setReassignSubmitting(true);
     try {
-      const prevAssignee = asset.assignee;
       const result = await reassignAsset(asset.id, {
         newAssignee: reassignName.trim(),
         assigneeEmail: reassignEmail.trim() || undefined,
@@ -257,21 +254,15 @@ export default function AssetDetailScreen() {
         return;
       }
 
-      if (reassignEmail.trim()) {
-        await openReassignmentEmail(
-          asset,
-          prevAssignee,
-          reassignName.trim(),
-          reassignEmail.trim(),
-          user?.name || "IT Operations",
-          reassignReason.trim() || undefined,
-        );
-      }
-
+      // The "Laptop Confirmation" email to the new user is sent by
+      // updateAsset; it never mentions the previous user.
+      const emailed = reassignEmail.trim()
+        ? ` The confirmation email goes to ${reassignEmail.trim()}.`
+        : "";
       if (Platform.OS === "web") {
-        window.alert(`Asset successfully reassigned to ${reassignName.trim()}`);
+        window.alert(`Asset successfully reassigned to ${reassignName.trim()}.${emailed}`);
       } else {
-        Alert.alert("Reassigned", `Asset successfully transferred to ${reassignName.trim()}`);
+        Alert.alert("Reassigned", `Asset successfully transferred to ${reassignName.trim()}.${emailed}`);
       }
     } catch (err: any) {
       const msg = err?.message || "Failed to reassign asset.";
@@ -369,22 +360,6 @@ export default function AssetDetailScreen() {
                   prev.status !== updated.status);
               if (updated && newlyAssigned) {
                 await sendAssetAssignedNotification(updated, fromName);
-                if (assigneeEmail && Platform.OS !== "web") {
-                  Alert.alert(
-                    "Notify assignee?",
-                    `Send ${updated.assignee} an email about this change?`,
-                    [
-                      { text: "Skip", style: "cancel" },
-                      {
-                        text: "Send email",
-                        onPress: () =>
-                          openAssignmentEmail(updated, assigneeEmail, fromName),
-                      },
-                    ],
-                  );
-                } else if (assigneeEmail && Platform.OS === "web") {
-                  openAssignmentEmail(updated, assigneeEmail, fromName);
-                }
               }
               setEditing(false);
             } catch (err: any) {
