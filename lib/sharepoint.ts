@@ -139,7 +139,7 @@ export function fromSpItem(item: any): Asset {
 
 const MAX_STORED_EVENTS = 200;
 
-const OPTIONAL_COLUMNS = [
+export const OPTIONAL_COLUMNS = [
   "Vertical",
   "Make",
   "Model",

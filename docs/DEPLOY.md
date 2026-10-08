@@ -166,10 +166,58 @@ Native (Android) builds use `asset-tracker://auth/callback`
   the IT user's own mailbox instead.
 - `openid`, `profile`, `email`, `offline_access`
 
-**App roles.** Users without an `Admin` or `Technician` app role (and not in
-`ADMIN_EMAILS`) are read-only viewers. Assign roles under Enterprise
-applications → IT Asset Tracker → Users and groups. Roles must appear in the
-id_token, which is what both the client and the server read.
+**App roles — who can do what.** Roles come only from Entra ID app roles in
+the signed id_token (re-read at every sign-in and token refresh — never from
+the browser's storage). Anyone without a role is a read-only **Viewer**, so
+all staff can still sign in to confirm receipt of a device.
+
+| App role value | App role | Can |
+|---|---|---|
+| `Asset.Admin` | IT Administrator | everything: create, edit, delete, approve reassignments, import, report logs |
+| `Asset.Technician` | IT Technician | create and edit assets; reassigning an In Use device needs Admin approval; no delete |
+| `Asset.Viewer` (or no role) | Auditor / Viewer | read only |
+
+The short values `Admin`, `Technician` and `Viewer` are also accepted. Matching
+is exact (case-insensitive) and the highest role wins. `ADMIN_EMAILS`
+(`lib/msConfig.ts` and the server env var) is only an emergency fallback.
+
+1. **App registrations → IT Asset Tracker → App roles → Create app role**, three
+   times (Allowed member types: *Users/Groups*):
+
+   | Display name | Value | Description |
+   |---|---|---|
+   | IT Administrator | `Asset.Admin` | Full access to the IT Asset Tracker |
+   | IT Technician | `Asset.Technician` | Create and edit assets |
+   | Auditor / Viewer | `Asset.Viewer` | Read-only access |
+
+2. Create two security groups, e.g. **IT Asset Admins** and **IT Asset
+   Technicians**, and add the IT staff.
+3. **Enterprise applications → IT Asset Tracker → Users and groups → Add user/group**:
+   assign *IT Asset Admins* → IT Administrator and *IT Asset Technicians* →
+   IT Technician. (Assigning groups needs Entra ID P1; otherwise assign users
+   one by one.)
+4. **Enterprise applications → IT Asset Tracker → Properties → Assignment
+   required: No**, so every employee can sign in as a Viewer to confirm receipt.
+5. Role changes take effect at the user's next sign-in, or within an hour when
+   their token refreshes. Settings → *Authorization Role* shows each user's role
+   and where it came from.
+
+**SharePoint permissions are what actually protect the data.** On IIS the
+browser talks to Microsoft Graph directly with the user's own token, so the
+app's role only controls what the screens offer. Match the list permissions to
+the roles (IT Asset Register → List settings → Permissions for this list →
+Stop inheriting permissions):
+
+| Group | IT Asset Register | Asset Confirmations |
+|---|---|---|
+| IT Asset Admins | Edit | Full Control |
+| IT Asset Technicians | *Contribute without Delete* (Site settings → Site permissions → Permission levels → copy *Contribute*, untick *Delete Items*) | Contribute |
+| Auditors (optional) | Read | Read |
+| Everyone else | no access | Contribute (see *Assignment confirmations* below) |
+
+**Check the setup:** Settings → *Test SharePoint Connection* checks the site,
+both lists, every column the app writes, and the Graph permissions, and says
+how to fix anything missing.
 
 ---
 

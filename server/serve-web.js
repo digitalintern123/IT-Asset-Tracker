@@ -22,6 +22,28 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ||
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
 
+// Entra ID app role values (exact, case-insensitive) → role. Must match
+// ROLE_CLAIMS in lib/roles.ts.
+const ROLE_CLAIMS = {
+  "asset.admin": "admin",
+  admin: "admin",
+  "asset.technician": "technician",
+  technician: "technician",
+  "asset.viewer": "viewer",
+  viewer: "viewer",
+};
+const ROLE_RANK = { viewer: 0, technician: 1, admin: 2 };
+
+function roleForClaims(roles, email) {
+  if (email && ADMIN_EMAILS.includes(email)) return "admin";
+  let best = "viewer";
+  for (const raw of Array.isArray(roles) ? roles : []) {
+    const role = ROLE_CLAIMS[String(raw).trim().toLowerCase()];
+    if (role && ROLE_RANK[role] > ROLE_RANK[best]) best = role;
+  }
+  return best;
+}
+
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
@@ -231,12 +253,7 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         const email = (payload.email || payload.upn || payload.preferred_username || "").toLowerCase();
-        const roles = Array.isArray(payload.roles) ? payload.roles.map((r) => String(r).toLowerCase()) : [];
-        if (roles.some((r) => r.includes("admin")) || ADMIN_EMAILS.includes(email)) {
-          callerRole = "admin";
-        } else if (roles.some((r) => r.includes("technician") || r.includes("staff"))) {
-          callerRole = "technician";
-        }
+        callerRole = roleForClaims(payload.roles, email);
       }
 
       try {

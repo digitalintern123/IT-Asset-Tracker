@@ -18,7 +18,7 @@ import { useAssets } from "@/contexts/AssetContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { UserRole, ROLE_LABELS, ROLE_DESCRIPTIONS } from "@/lib/roles";
-import { testSharePointConnection, SharePointTestResult } from "@/lib/sharepoint";
+import { checkSetup, SetupReport } from "@/lib/setupCheck";
 
 type LucideIconName = string;
 export default function SettingsScreen() {
@@ -28,7 +28,29 @@ export default function SettingsScreen() {
   const { user, signOut, setDemoRole, getValidAccessToken } = useAuth();
   const router = useRouter();
   const [testingSp, setTestingSp] = useState(false);
-  const [testResult, setTestResult] = useState<SharePointTestResult | null>(null);
+  const [testResult, setTestResult] = useState<SetupReport | null>(null);
+  const issues = testResult ? testResult.items.filter((i) => !i.ok).length : 0;
+  // Alert.alert is a no-op on react-native-web.
+  const notice = (title: string, message: string) => {
+    if (Platform.OS === "web") window.alert(`${title}\n\n${message}`);
+    else Alert.alert(title, message);
+  };
+  const spState: "demo" | "signedOut" | "error" | "connected" | "notSynced" = user?.isDemo
+    ? "demo"
+    : !user
+    ? "signedOut"
+    : syncError
+    ? "error"
+    : lastSyncedAt
+    ? "connected"
+    : "notSynced";
+  const SP_PILL = {
+    demo: { bg: "#FFF3E0", fg: "#E65100", text: "Simulated" },
+    signedOut: { bg: colors.muted, fg: colors.mutedForeground, text: "Disconnected" },
+    error: { bg: "#FCE8E6", fg: "#C5221F", text: "Error" },
+    connected: { bg: "#E6F4EA", fg: "#137333", text: "Connected" },
+    notSynced: { bg: colors.muted, fg: colors.mutedForeground, text: "Not synced" },
+  }[spState];
 
   const confirm = (
     title: string,
@@ -208,34 +230,36 @@ export default function SettingsScreen() {
           sublabel={
             user?.isDemo
               ? "Demo sandbox (No corporate records modified)"
-              : user
-              ? "Site: encalmit.sharepoint.com · List: IT Asset Register"
-              : "Sign in to connect"
+              : !user
+              ? "Sign in to connect"
+              : syncError
+              ? `Couldn't load the register: ${syncError}`
+              : "Site: encalmit.sharepoint.com · List: IT Asset Register"
           }
           colors={colors}
           onPress={() => {
             if (user?.isDemo) {
-              Alert.alert("Demo Sandbox", "You are in Demo Mode. Assets are simulated locally and not synced to corporate SharePoint.");
+              notice("Demo Sandbox", "You are in Demo Mode. Assets are simulated locally and not synced to corporate SharePoint.");
             } else if (user) {
               refresh();
             } else {
-              Alert.alert("Sign In Required", "Please sign in with your corporate Microsoft 365 account to access SharePoint.");
+              notice("Sign In Required", "Please sign in with your corporate Microsoft 365 account to access SharePoint.");
             }
           }}
           right={
             <View
               style={[
                 styles.statusPill,
-                { backgroundColor: user?.isDemo ? "#FFF3E0" : user ? "#E6F4EA" : colors.muted },
+                { backgroundColor: SP_PILL.bg },
               ]}
             >
               <Text
                 style={[
                   styles.statusPillText,
-                  { color: user?.isDemo ? "#E65100" : user ? "#137333" : colors.mutedForeground },
+                  { color: SP_PILL.fg },
                 ]}
               >
-                {user?.isDemo ? "Simulated" : user ? "Connected" : "Disconnected"}
+                {SP_PILL.text}
               </Text>
             </View>
           }
@@ -245,17 +269,19 @@ export default function SettingsScreen() {
           label="Test SharePoint Connection"
           sublabel={
             testingSp
-              ? "Pinging Microsoft Graph API..."
+              ? "Checking site, lists, columns & permissions..."
               : testResult
-              ? `${testResult.message} (${testResult.latencyMs}ms)`
-              : "Verify Graph token, Site ID & List access"
+              ? testResult.ok
+                ? `All ${testResult.items.length} checks passed (${testResult.latencyMs}ms)`
+                : `${issues} issue${issues === 1 ? "" : "s"} found — see below`
+              : "Checks site, lists, columns & Graph permissions"
           }
           colors={colors}
           onPress={async () => {
             if (user?.isDemo) {
               setTestResult({
                 ok: true,
-                message: "Demo Mode active: Local mock database simulated successfully",
+                items: [{ label: "Demo Mode: local mock database (nothing to check)", ok: true }],
                 latencyMs: 14,
               });
               return;
@@ -269,7 +295,7 @@ export default function SettingsScreen() {
             setTestingSp(true);
             setTestResult(null);
             try {
-              const res = await testSharePointConnection(token);
+              const res = await checkSetup(token);
               setTestResult(res);
               if (Platform.OS !== "web") {
                 Haptics.notificationAsync(
@@ -281,7 +307,7 @@ export default function SettingsScreen() {
             } catch (err: any) {
               setTestResult({
                 ok: false,
-                message: err?.message || "Diagnostic check failed",
+                items: [{ label: "Setup check", ok: false, detail: err?.message || "Diagnostic check failed" }],
                 latencyMs: 0,
               });
             } finally {
@@ -317,11 +343,51 @@ export default function SettingsScreen() {
                   },
                 ]}
               >
-                {testingSp ? "Testing..." : testResult ? (testResult.ok ? "Passed" : "Failed") : "Run Test"}
+                {testingSp
+                  ? "Testing..."
+                  : testResult
+                  ? testResult.ok
+                    ? "Passed"
+                    : `${issues} issue${issues === 1 ? "" : "s"}`
+                  : "Run Test"}
               </Text>
             </View>
           }
         />
+        {testResult && !testingSp && !user?.isDemo ? (
+          <View
+            style={{
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              gap: 8,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+              backgroundColor: colors.card,
+            }}
+          >
+            {testResult.items.map((item) => (
+              <View key={item.label} style={{ flexDirection: "row", gap: 8 }}>
+                <Text
+                  style={{
+                    width: 16,
+                    fontFamily: "Inter_600SemiBold",
+                    color: item.unknown ? colors.mutedForeground : item.ok ? "#137333" : "#C5221F",
+                  }}
+                >
+                  {item.unknown ? "?" : item.ok ? "✓" : "✗"}
+                </Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontFamily: "Inter_500Medium", color: colors.foreground }}>
+                    {item.label}
+                  </Text>
+                  {item.detail ? (
+                    <Text style={{ fontSize: 12, color: colors.mutedForeground, marginTop: 2 }}>{item.detail}</Text>
+                  ) : null}
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
         <Row
           icon="shield"
           label="Microsoft Azure AD (Entra ID)"
@@ -355,7 +421,11 @@ export default function SettingsScreen() {
           <Row
             icon="user-check"
             label="Authorization Role"
-            sublabel={ROLE_DESCRIPTIONS[user.role || "technician"]}
+            sublabel={
+              `${ROLE_DESCRIPTIONS[user.role || "viewer"]}` +
+              (user.roleSource ? `\nFrom: ${user.roleSource}` : "") +
+              (user.isDemo ? "" : "\nRole changes in Entra ID apply at your next sign-in or within the hour.")
+            }
             colors={colors}
             right={
               <View
@@ -384,7 +454,7 @@ export default function SettingsScreen() {
                     },
                   ]}
                 >
-                  {ROLE_LABELS[user.role || "technician"]}
+                  {ROLE_LABELS[user.role || "viewer"]}
                 </Text>
               </View>
             }

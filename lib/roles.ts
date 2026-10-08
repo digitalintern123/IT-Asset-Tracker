@@ -84,6 +84,40 @@ export function parseJwtRoles(token?: string): string[] {
 }
 
 /**
+ * Entra ID app role values (case-insensitive, exact match) → app role.
+ * `Asset.*` is the recommended naming; the short names keep roles that
+ * were already set up working. Keep in sync with server/serve-web.js.
+ */
+export const ROLE_CLAIMS: Record<string, UserRole> = {
+  "asset.admin": "admin",
+  admin: "admin",
+  "asset.technician": "technician",
+  technician: "technician",
+  "asset.viewer": "viewer",
+  viewer: "viewer",
+};
+
+const ROLE_RANK: Record<UserRole, number> = { viewer: 0, technician: 1, admin: 2 };
+
+/** The highest app role in the token's `roles` claim, and which value granted it. */
+export function roleFromClaims(tokenRoles: string[] = []): { role: UserRole; claim: string } | null {
+  let best: { role: UserRole; claim: string } | null = null;
+  for (const raw of tokenRoles) {
+    const role = ROLE_CLAIMS[String(raw).trim().toLowerCase()];
+    if (role && (!best || ROLE_RANK[role] > ROLE_RANK[best.role])) best = { role, claim: String(raw) };
+  }
+  return best;
+}
+
+function isAdminEmail(email: string): boolean {
+  const normalizedEmail = (email || "").toLowerCase().trim();
+  return (
+    !!normalizedEmail &&
+    MS_CONFIG.ADMIN_EMAILS.some((adminEmail) => adminEmail.toLowerCase() === normalizedEmail)
+  );
+}
+
+/**
  * Determine a user's role from token claims, admin emails list, or demo settings.
  */
 export function resolveUserRole(
@@ -97,31 +131,24 @@ export function resolveUserRole(
     return demoRole || "admin";
   }
 
-  const normalizedEmail = (email || "").toLowerCase().trim();
+  // 2. Azure AD App Roles from the signed id_token (highest wins)
+  const fromClaims = roleFromClaims(tokenRoles);
+  // 3. Emergency fallback: configured administrator emails
+  if (isAdminEmail(email)) return "admin";
+  if (fromClaims) return fromClaims.role;
 
-  // 2. Azure AD App Roles from token
-  const lowerRoles = tokenRoles.map((r) => r.toLowerCase());
-  if (lowerRoles.some((r) => r.includes("admin"))) {
-    return "admin";
-  }
-  if (lowerRoles.some((r) => r.includes("technician") || r.includes("staff"))) {
-    return "technician";
-  }
-  if (lowerRoles.some((r) => r.includes("viewer") || r.includes("reader") || r.includes("auditor"))) {
-    return "viewer";
-  }
-
-  // 3. Fallback: Configured administrator emails
-  const isAdminEmail = MS_CONFIG.ADMIN_EMAILS.some(
-    (adminEmail) => adminEmail.toLowerCase() === normalizedEmail
-  );
-  if (isAdminEmail) {
-    return "admin";
-  }
-
-  // 4. Default corporate user role: read-only until explicitly granted
-  //    an Azure AD app role (Technician / Admin) or listed in ADMIN_EMAILS.
+  // 4. Default: read-only until granted an app role in Entra ID.
   return "viewer";
+}
+
+/** Human-readable reason for the user's role (shown in Settings). */
+export function roleSource(email: string, tokenRoles: string[] = [], isDemo = false): string {
+  if (isDemo) return "Demo role switcher";
+  const fromClaims = roleFromClaims(tokenRoles);
+  if (fromClaims && fromClaims.role === "admin") return `Entra app role ${fromClaims.claim}`;
+  if (isAdminEmail(email)) return "Admin email list (emergency fallback)";
+  if (fromClaims) return `Entra app role ${fromClaims.claim}`;
+  return "Default — no app role assigned";
 }
 
 /**

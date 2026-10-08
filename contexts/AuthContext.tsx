@@ -34,7 +34,19 @@ import {
   resolveUserRole,
   getPermissionsForRole,
   parseJwtRoles,
+  roleSource,
 } from "@/lib/roles";
+
+/** Role is always derived from the signed id_token, never from storage. */
+function roleFromIdToken(email: string, idToken?: string) {
+  const tokenRoles = parseJwtRoles(idToken);
+  const role = resolveUserRole(email, tokenRoles);
+  return {
+    role,
+    permissions: getPermissionsForRole(role),
+    roleSource: roleSource(email, tokenRoles),
+  };
+}
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -49,6 +61,8 @@ export interface AuthUser {
   accessToken?: string;
   expiresAt?: number;
   isDemo?: boolean;
+  /** Where the role came from (shown in Settings). */
+  roleSource?: string;
 }
 
 interface AuthContextValue {
@@ -122,6 +136,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           prev
             ? {
                 ...prev,
+                ...roleFromIdToken(prev.email, updatedTokens.idToken),
                 accessToken: updatedTokens.accessToken,
                 expiresAt: updatedTokens.expiresAt,
               }
@@ -152,22 +167,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const rawProfile = await AsyncStorage.getItem(PROFILE_STORAGE_KEY);
         if (rawProfile) {
           const profile = JSON.parse(rawProfile) as AuthUser;
-          // Ensure role and permissions are always synchronized
-          const role = profile.role || "technician";
-          profile.role = role;
-          profile.permissions = getPermissionsForRole(role);
-
           if (profile.isDemo) {
-            setUser(profile);
+            const role = profile.role || "admin";
+            setUser({ ...profile, role, permissions: getPermissionsForRole(role), roleSource: roleSource("", [], true) });
           } else {
-            // Load credentials from secure storage
+            // Load credentials from secure storage. The stored role is never
+            // trusted: it is re-derived from the signed id_token (viewer if none).
             const tokens = await getSecureTokens();
             if (tokens) {
               tokensRef.current = tokens;
               profile.accessToken = tokens.accessToken;
               profile.expiresAt = tokens.expiresAt;
             }
-            setUser(profile);
+            setUser({ ...profile, ...roleFromIdToken(profile.email, tokens?.idToken) });
           }
         }
       } catch (err) {
@@ -224,17 +236,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const name = profile.displayName || "Encalm User";
         const email = profile.email || "";
 
-        // Resolve user role from token claims & admin email list
-        const tokenRoles = parseJwtRoles(tokens.idToken);
-        const role = resolveUserRole(email, tokenRoles);
-        const permissions = getPermissionsForRole(role);
-
         const authUser: AuthUser = {
           email,
           name,
           initials: getInitials(name),
-          role,
-          permissions,
+          ...roleFromIdToken(email, tokens.idToken),
           accessToken: tokens.accessToken,
           expiresAt: tokens.expiresAt,
         };
@@ -288,16 +294,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       tokensRef.current = res.tokens;
       await setSecureTokens(res.tokens);
 
-      const tokenRoles = parseJwtRoles(res.tokens.idToken);
-      const role = resolveUserRole(res.email, tokenRoles);
-      const permissions = getPermissionsForRole(role);
-
       const authUser: AuthUser = {
         email: res.email,
         name: res.name || displayName || email || "Encalm User",
         initials: getInitials(res.name || displayName || email || "EU"),
-        role,
-        permissions,
+        ...roleFromIdToken(res.email, res.tokens.idToken),
         accessToken: res.tokens.accessToken,
         expiresAt: res.tokens.expiresAt,
       };
@@ -316,6 +317,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       role: "admin",
       permissions: getPermissionsForRole("admin"),
       isDemo: true,
+      roleSource: roleSource("", [], true),
     };
     tokensRef.current = null;
     await removeSecureTokens();
@@ -327,6 +329,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const setDemoRole = useCallback((role: UserRole) => {
     setUser((prev) => {
       if (!prev) return null;
+      // Only the demo session can switch roles; real roles come from Entra ID.
+      if (!prev.isDemo) return prev;
       const updated: AuthUser = {
         ...prev,
         role,
