@@ -49,6 +49,7 @@ export default function ImportScreen() {
   const [defaultVertical, setDefaultVertical] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  const [skippedCount, setSkippedCount] = useState(0);
   const [results, setResults] = useState<{ ok: boolean; error?: string; row: number }[]>([]);
 
   const parsed = useMemo(
@@ -104,6 +105,9 @@ export default function ImportScreen() {
   };
 
   const runImport = async () => {
+    // Fixed now: once imported, these serials are "already in the register",
+    // so re-parsing afterwards would count every row as skipped.
+    setSkippedCount(errorRows.length);
     setPhase("importing");
     setProgress(0);
     try {
@@ -214,7 +218,7 @@ export default function ImportScreen() {
           <Text style={[styles.summary, fg]}>
             {results.filter((r) => r.ok).length} imported
             {results.some((r) => !r.ok) ? ` · ${results.filter((r) => !r.ok).length} failed` : ""}
-            {errorRows.length ? ` · ${errorRows.length} skipped` : ""}
+            {skippedCount ? ` · ${skippedCount} skipped` : ""}
           </Text>
           {results
             .filter((r) => !r.ok)

@@ -78,19 +78,35 @@ export function resolveAssetConflict(
     }
   }
 
-  // Preserve history union
+  // Preserve history union. A custody record present on both sides keeps
+  // whichever side closed (returnedAt) or confirmed it, so a merge never
+  // reopens a record the local edit just closed.
   if (localAsset.assignmentHistory || serverAsset.assignmentHistory) {
-    const combinedHistory = [
-      ...(serverAsset.assignmentHistory || []),
-      ...(localAsset.assignmentHistory || []),
-    ];
-    // De-duplicate by ID
-    const seen = new Set<string>();
-    merged.assignmentHistory = combinedHistory.filter((rec) => {
-      if (seen.has(rec.id)) return false;
-      seen.add(rec.id);
-      return true;
-    });
+    const byId = new Map<string, NonNullable<Asset["assignmentHistory"]>[number]>();
+    const order: string[] = [];
+    for (const rec of [...(serverAsset.assignmentHistory || []), ...(localAsset.assignmentHistory || [])]) {
+      const prev = byId.get(rec.id);
+      if (!prev) {
+        order.push(rec.id);
+        byId.set(rec.id, rec);
+      } else {
+        byId.set(rec.id, {
+          ...prev,
+          ...rec,
+          returnedAt: rec.returnedAt || prev.returnedAt,
+          confirmedAt: rec.confirmedAt || prev.confirmedAt,
+          confirmedBy: rec.confirmedBy || prev.confirmedBy,
+        });
+      }
+    }
+    merged.assignmentHistory = order.map((id) => byId.get(id)!);
+  }
+
+  // Approval request (pending reassign/delete): take the side that changed it.
+  {
+    const key = (a?: Asset) => JSON.stringify(a?.approvalRequest ?? null);
+    const localChanged = baseAsset ? key(localAsset) !== key(baseAsset) : key(localAsset) !== key(serverAsset);
+    merged.approvalRequest = localChanged ? localAsset.approvalRequest : serverAsset.approvalRequest;
   }
 
   // Preserve both sides' audit events

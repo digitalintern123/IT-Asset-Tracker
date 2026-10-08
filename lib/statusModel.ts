@@ -41,11 +41,19 @@ export function validateStatusTransition(
 ): { valid: boolean; error?: string } {
   // 1. Check if structurally valid transition
   if (!canTransitionStatus(current, next)) {
-    if (current === "retired" && !context.isAdmin) {
+    if (current === "retired") {
+      if (!context.isAdmin) {
+        return {
+          valid: false,
+          error:
+            "Out of Order devices are decommissioned. Only IT Administrators can bring them back into service.",
+        };
+      }
+      // Admins may bring an Out of Order device back into service.
+    } else {
       return {
         valid: false,
-        error:
-          "Out of Order devices are decommissioned. Only IT Administrators can bring them back into service.",
+        error: `A device can't go from "${current}" to "${next}".`,
       };
     }
   }

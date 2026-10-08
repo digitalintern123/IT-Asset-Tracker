@@ -142,23 +142,34 @@ export async function clearOfflineQueue(): Promise<void> {
  * Drain the offline mutation queue by executing each item through a runner.
  */
 export async function drainOfflineQueue(
-  runner: (mutation: QueuedMutation) => Promise<boolean>
-): Promise<{ processed: number; remaining: number }> {
+  // true = done; false = retry later; "permanent" = will never succeed
+  // (e.g. SharePoint rejected it), so dead-letter it and keep draining.
+  runner: (mutation: QueuedMutation) => Promise<boolean | "permanent">
+): Promise<{ processed: number; remaining: number; failed: number }> {
   if (!isNetworkOnline()) {
-    return { processed: 0, remaining: (await getQueuedMutations()).length };
+    return { processed: 0, remaining: (await getQueuedMutations()).length, failed: 0 };
   }
 
   const queue = await getQueuedMutations();
-  if (queue.length === 0) return { processed: 0, remaining: 0 };
+  if (queue.length === 0) return { processed: 0, remaining: 0, failed: 0 };
 
   let processedCount = 0;
+  let failedCount = 0;
   for (const item of queue) {
-    let ok = false;
+    let ok: boolean | "permanent" = false;
     try {
       ok = await runner(item);
     } catch (err) {
       console.warn(`Failed to process queued mutation ${item.id}:`, err);
       ok = false;
+    }
+
+    if (ok === "permanent") {
+      console.error(`Mutation ${item.id} was rejected; moving to dead letters.`);
+      await removeQueuedMutation(item.id);
+      await addDeadLetter({ ...item, retryCount: (item.retryCount || 0) + 1 });
+      failedCount++;
+      continue;
     }
 
     if (ok) {
@@ -175,6 +186,7 @@ export async function drainOfflineQueue(
       );
       await removeQueuedMutation(item.id);
       await addDeadLetter({ ...item, retryCount: attempts });
+      failedCount++;
       continue;
     }
 
@@ -183,5 +195,5 @@ export async function drainOfflineQueue(
   }
 
   const remaining = (await getQueuedMutations()).length;
-  return { processed: processedCount, remaining };
+  return { processed: processedCount, remaining, failed: failedCount };
 }

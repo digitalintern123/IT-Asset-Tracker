@@ -38,6 +38,7 @@ function WebQRScanner({
   scanError: string | null;
 }) {
   const colors = useColors();
+  const router = useRouter();
   const videoRef = useRef<any>(null);
   const canvasRef = useRef<any>(null);
   const [camError, setCamError] = useState<string | null>(null);
@@ -95,9 +96,13 @@ function WebQRScanner({
             inversionAttempts: "dontInvert",
           });
           if (code && code.data && !handledRef.current) {
+            // Keep scanning: a code that matches no asset must not stop the
+            // camera. The pause stops the same code firing every frame.
             handledRef.current = true;
             onScanRef.current(code.data);
-            return;
+            setTimeout(() => {
+              handledRef.current = false;
+            }, 2500);
           }
         }
       }
@@ -124,7 +129,7 @@ function WebQRScanner({
           {camError}
         </Text>
         <Pressable
-          onPress={() => window.history.back()}
+          onPress={() => goBack(router)}
           style={({ pressed }) => [
             styles.permBtn,
             { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 },

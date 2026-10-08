@@ -92,7 +92,11 @@ export function filterRows(rows: ReportRow[], f: ReportFilter): ReportRow[] {
     if (f.status && f.status !== "all" && r.toStatus !== f.status && r.fromStatus !== f.status) {
       return false;
     }
-    const day = r.at.slice(0, 10);
+    // Local calendar day (the From/To pickers and the CSV use local time).
+    const d = new Date(r.at);
+    const day = isNaN(d.getTime())
+      ? r.at.slice(0, 10)
+      : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     if (f.from && day < f.from) return false;
     if (f.to && day > f.to) return false;
     if (q) {

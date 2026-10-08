@@ -23,6 +23,8 @@ import {
   getCategoryIcon,
 } from "@/constants/categories";
 import { parseLocation } from "@/lib/location";
+import { canTransitionStatus } from "@/lib/statusModel";
+import { useAuth } from "@/contexts/AuthContext";
 import { LocationPicker } from "@/components/LocationPicker";
 import { PeoplePicker } from "@/components/PeoplePicker";
 import { SelectField } from "@/components/SelectField";
@@ -71,9 +73,16 @@ export function AssetForm({
   const [status, setStatus] = useState<AssetStatus>(initial?.status ?? "new");
   // A new entry is either a New Device or issued straight away. Once a device
   // has left "New Device" it never goes back (returned devices are "Available").
+  // Editing: only the moves the status rules allow (Out of Order is final
+  // except for IT Administrators).
+  const { user } = useAuth();
   const statusOptions: AssetStatus[] = !initial
     ? ["new", "in_use"]
-    : STATUSES.filter((st) => st !== "new" || initial.status === "new");
+    : STATUSES.filter(
+        (st) =>
+          canTransitionStatus(initial.status, st) ||
+          (initial.status === "retired" && user?.role === "admin" && st !== "new"),
+      );
   const [assignee, setAssignee] = useState(initial?.assignee ?? "");
   const [assigneeEmail, setAssigneeEmail] = useState(initialAssigneeEmail ?? "");
   const [location, setLocation] = useState(initial?.location ?? "");
@@ -172,18 +181,29 @@ export function AssetForm({
     }
     // 9. Purchase details are optional (older devices often have none),
     //    but must be well-formed when given.
-    const isoDate = /^\d{4}-\d{2}-\d{2}$/;
-    if (purchaseDate.trim() && !isoDate.test(purchaseDate.trim())) {
+    // A real calendar date, not just the YYYY-MM-DD shape (rejects 2025-13-45).
+    const isValidDate = (v: string) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+      const d = new Date(`${v}T00:00:00Z`);
+      return !isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+    };
+    if (purchaseDate.trim() && !isValidDate(purchaseDate.trim())) {
       setError("Purchase date must be YYYY-MM-DD *");
       return;
     }
-    const cleanPriceStr = purchasePriceText.replace(/[^0-9.]/g, "");
-    const price = cleanPriceStr ? parseFloat(cleanPriceStr) : 0;
+    // Digits with optional thousands separators and decimals only: "-500" or
+    // "abc" are errors, not 500 / 0.
+    const priceText = purchasePriceText.trim().replace(/^₹\s*/, "");
+    if (priceText && !/^[0-9][0-9,]*(\.[0-9]+)?$/.test(priceText)) {
+      setError("Purchase price must be a number (₹ INR) *");
+      return;
+    }
+    const price = priceText ? parseFloat(priceText.replace(/,/g, "")) : 0;
     if (!Number.isFinite(price) || price < 0) {
       setError("Purchase price must be a number (₹ INR) *");
       return;
     }
-    if (warrantyExpiry.trim() && !isoDate.test(warrantyExpiry.trim())) {
+    if (warrantyExpiry.trim() && !isValidDate(warrantyExpiry.trim())) {
       setError("Warranty expiry must be YYYY-MM-DD *");
       return;
     }
@@ -207,7 +227,9 @@ export function AssetForm({
         category: finalCategory,
         serialNumber: serialNumber.trim(),
         status,
-        assignee: assignee.trim(),
+        // Returned / Out of Order / New devices have no user. Maintenance
+        // keeps the current holder.
+        assignee: status === "in_use" || status === "maintenance" ? assignee.trim() : "",
         location: location.trim(),
         vertical,
         department: department.trim(),
@@ -221,7 +243,7 @@ export function AssetForm({
         warrantyExpiry: warrantyExpiry.trim() || null,
         notes: notes.trim(),
       },
-      assigneeEmail: assigneeEmail.trim(),
+      assigneeEmail: status === "in_use" || status === "maintenance" ? assigneeEmail.trim() : "",
     });
   };
 

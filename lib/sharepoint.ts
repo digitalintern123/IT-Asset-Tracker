@@ -53,28 +53,37 @@ export function fromSpItem(item: any): Asset {
   const spId = String(item.id || f.id || f.ID || "");
   const assetId = String(f.AssetId || f.AssetID || spId || Date.now().toString(36));
 
-  // Extract Assignment History
-  let assignmentHistory = [];
-  if (Array.isArray(f.AssignmentHistory)) {
+  // Extract Assignment History (Notes first; a legacy AssignmentHistory
+  // column only if Notes has none)
+  let assignmentHistory: any[] = [];
+  if (f.Notes && typeof f.Notes === "string" && f.Notes.includes("<!-- HISTORY:")) {
+    try {
+      const match = f.Notes.match(/<!-- HISTORY:([\s\S]*?) -->/);
+      if (match && match[1]) {
+        assignmentHistory = JSON.parse(match[1]);
+      }
+    } catch {}
+  } else if (Array.isArray(f.AssignmentHistory)) {
     assignmentHistory = f.AssignmentHistory;
   } else if (typeof f.AssignmentHistory === "string" && f.AssignmentHistory.trim()) {
     try {
       assignmentHistory = JSON.parse(f.AssignmentHistory);
     } catch {}
-  } else if (f.Notes && typeof f.Notes === "string" && f.Notes.includes("<!-- HISTORY:")) {
-    try {
-      const match = f.Notes.match(/<!-- HISTORY:(.*?) -->/);
-      if (match && match[1]) {
-        assignmentHistory = JSON.parse(match[1]);
-      }
-    } catch {}
   }
+  // A receipt confirmation only counts when it comes from the Asset
+  // Confirmations list (applyConfirmations); never trust one stored in Notes.
+  assignmentHistory = Array.isArray(assignmentHistory)
+    ? assignmentHistory.map((r: any) => {
+        const { confirmedAt: _c, confirmedBy: _b, ...rest } = r || {};
+        return rest;
+      })
+    : [];
 
   // Extract Approval Request if pending or recorded
   let approvalRequest = undefined;
   if (f.Notes && typeof f.Notes === "string" && f.Notes.includes("<!-- APPROVAL:")) {
     try {
-      const match = f.Notes.match(/<!-- APPROVAL:(.*?) -->/);
+      const match = f.Notes.match(/<!-- APPROVAL:([\s\S]*?) -->/);
       if (match && match[1]) {
         approvalRequest = JSON.parse(match[1]);
       }
@@ -85,7 +94,7 @@ export function fromSpItem(item: any): Asset {
   let events = [];
   if (f.Notes && typeof f.Notes === "string" && f.Notes.includes("<!-- EVENTS:")) {
     try {
-      const match = f.Notes.match(/<!-- EVENTS:(.*?) -->/);
+      const match = f.Notes.match(/<!-- EVENTS:([\s\S]*?) -->/);
       if (match && match[1]) {
         events = JSON.parse(match[1]);
       }
@@ -93,9 +102,9 @@ export function fromSpItem(item: any): Asset {
   }
 
   const cleanNotes = (f.Notes || f.Description || "")
-    .replace(/<!-- HISTORY:.*? -->/g, "")
-    .replace(/<!-- APPROVAL:.*? -->/g, "")
-    .replace(/<!-- EVENTS:.*? -->/g, "")
+    .replace(/<!-- HISTORY:[\s\S]*? -->/g, "")
+    .replace(/<!-- APPROVAL:[\s\S]*? -->/g, "")
+    .replace(/<!-- EVENTS:[\s\S]*? -->/g, "")
     .trim();
 
   return {
@@ -107,8 +116,8 @@ export function fromSpItem(item: any): Asset {
     status: mapStatus(f.Status || f.AssetStatus || "available"),
     assignee: String(
       f.AssignedTo?.Title ||
-      f.Assign ||
       f.Assignee ||
+      f.Assign ||
       (typeof f.AssignedTo === "string" ? f.AssignedTo : "") ||
       ""
     ),
@@ -122,9 +131,9 @@ export function fromSpItem(item: any): Asset {
     operationalStatus: String(f.OperationalStatus || ""),
     assetClass: String(f.AssetClass || ""),
     accessories: String(f.Accessories || ""),
-    purchaseDate: String(f.PurchaseDate || ""),
+    purchaseDate: toDateOnly(f.PurchaseDate),
     purchasePrice: Number(f.PurchasePrice) || 0,
-    warrantyExpiry: f.WarrantyExpiry ? String(f.WarrantyExpiry) : null,
+    warrantyExpiry: toDateOnly(f.WarrantyExpiry) || null,
     notes: cleanNotes,
     assignmentHistory,
     events,
@@ -163,16 +172,58 @@ function missingColumnError(status: number, body: string): Error | null {
   return err;
 }
 
+/** ENC-LAP-2026-0007 → ENC-LAP-2026-0008 (keeps the zero padding). */
+export function nextAssetId(id: string): string {
+  const m = id.match(/^(.*?)(\d+)$/);
+  if (!m) return `${id}-2`;
+  const n = String(Number(m[2]) + 1).padStart(m[2].length, "0");
+  return m[1] + n;
+}
+
+/** App field → optional SharePoint column. */
+const OPTIONAL_FIELDS: [string, string][] = [
+  ["vertical", "Vertical"],
+  ["make", "Make"],
+  ["model", "Model"],
+  ["department", "Department"],
+  ["custodianship", "Custodianship"],
+  ["criticality", "Criticality"],
+  ["operationalStatus", "OperationalStatus"],
+  ["assetClass", "AssetClass"],
+  ["accessories", "Accessories"],
+];
+
+/**
+ * SharePoint Date columns come back from Graph as UTC date-times
+ * (e.g. local midnight in IST is "2024-03-14T18:30:00Z"). Shifting by 12h
+ * before taking the date gives the calendar date for any UTC-12..+12 site.
+ */
+function toDateOnly(value: unknown): string {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const d = new Date(text);
+  if (isNaN(d.getTime())) return text;
+  return new Date(d.getTime() + 12 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
 /**
  * JSON for a <!-- KEY:... --> block in Notes. "-->" inside user text would end
  * the comment early, so ">" is escaped (JSON.parse restores it).
  */
 function toNotesJson(value: unknown): string {
-  return JSON.stringify(value).replace(/>/g, "\\u003e");
+  return JSON.stringify(value)
+    .replace(/>/g, "\\u003e")
+    // Line/paragraph separators are valid in JSON strings but break the
+    // single-block match on read; escape them too.
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
 }
 
 export function toSpFields(input: AssetInput, assetId?: string): Record<string, unknown> {
-  let notesWithHistory = input.notes || "";
+  // Comment markers typed into Notes would be read back as (forged)
+  // history/approval/event blocks, so they are removed from user text.
+  let notesWithHistory = String(input.notes || "").replace(/<!--|-->/g, "");
   if (Array.isArray(input.assignmentHistory) && input.assignmentHistory.length > 0) {
     notesWithHistory = `${notesWithHistory}\n<!-- HISTORY:${toNotesJson(input.assignmentHistory)} -->`.trim();
   }
@@ -199,17 +250,14 @@ export function toSpFields(input: AssetInput, assetId?: string): Record<string, 
     Notes: notesWithHistory,
   };
 
-  // Only sent when set, so items without a vertical still save on a list
-  // that does not have the Vertical column yet.
-  if (input.vertical) fields.Vertical = input.vertical;
-  if (input.make) fields.Make = input.make;
-  if (input.model) fields.Model = input.model;
-  if (input.department) fields.Department = input.department;
-  if (input.custodianship) fields.Custodianship = input.custodianship;
-  if (input.criticality) fields.Criticality = input.criticality;
-  if (input.operationalStatus) fields.OperationalStatus = input.operationalStatus;
-  if (input.assetClass) fields.AssetClass = input.assetClass;
-  if (input.accessories) fields.Accessories = input.accessories;
+  // On create, only set columns are sent, so a list that lacks an optional
+  // column still accepts items that don't use it. On update, a field present
+  // in the input is always sent ("" clears it in SharePoint).
+  for (const [key, column] of OPTIONAL_FIELDS) {
+    const value = (input as any)[key];
+    if (value) fields[column] = value;
+    else if (!assetId && value !== undefined && value !== null) fields[column] = "";
+  }
 
   if (assetId) {
     fields.AssetId = assetId;
@@ -361,7 +409,13 @@ export async function createSharePointService(
     const assetId = input.id && input.id.startsWith("ENC-")
       ? input.id
       : `ENC-${getCategoryCode(input.category)}-${year}-${rand}`;
-    const fields = toSpFields(input, assetId);
+    // Each client numbers IDs from its own copy of the list, so two people
+    // (or an offline create) can pick the same one; take the next free one.
+    let uniqueId = assetId;
+    for (let i = 0; i < 50 && (await findItemIdByAssetId(uniqueId)); i++) {
+      uniqueId = nextAssetId(uniqueId);
+    }
+    const fields = toSpFields(input, uniqueId);
 
     const res = await fetch(base, {
       method: "POST",
@@ -460,8 +514,9 @@ export async function createSharePointService(
 
   async function findItemIdByAssetId(assetId: string): Promise<string | null> {
     const res = await fetch(
-      `${base}?expand=fields&$filter=fields/AssetId eq '${encodeURIComponent(assetId)}'`,
-      { headers }
+      `${base}?expand=fields&$filter=fields/AssetId eq '${encodeURIComponent(assetId.replace(/'/g, "''"))}'`,
+      // AssetId isn't indexed by default; without this Graph rejects the filter.
+      { headers: { ...headers, Prefer: "HonorNonIndexedQueriesWarningMayFailRandomly" } }
     );
     if (!res.ok) return null;
     const data = await res.json();

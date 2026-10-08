@@ -226,7 +226,9 @@ export default function AssetsScreen() {
                 message={
                   query || filter !== "all"
                     ? "Try a different search or filter."
-                    : "Tap the + button to add your first asset."
+                    : user?.permissions?.canCreateAsset
+                    ? "Tap the + button to add your first asset."
+                    : "No devices have been registered yet."
                 }
               />
             ) : null

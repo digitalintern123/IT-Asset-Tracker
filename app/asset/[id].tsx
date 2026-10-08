@@ -45,6 +45,7 @@ import {
 } from "@/lib/notify";
 import { isDeleteLocked, openCustodyRecord } from "@/lib/assetWorkflow";
 import { currentUserEmail } from "@/lib/mail";
+import { parseLocation } from "@/lib/location";
 import type { Asset } from "@/types/asset";
 
 function formatDate(d?: string | null): string {
@@ -102,6 +103,8 @@ export default function AssetDetailScreen() {
   const [reassignLocation, setReassignLocation] = useState("");
   const [reassignReason, setReassignReason] = useState("");
   const [reassignSubmitting, setReassignSubmitting] = useState(false);
+  // Blocks a double-click on Approve/Reject from running the decision twice.
+  const [resolving, setResolving] = useState(false);
 
   // Deletion Request modal state (for non-admins)
   const [deleteRequestModalOpen, setDeleteRequestModalOpen] = useState(false);
@@ -127,6 +130,11 @@ export default function AssetDetailScreen() {
 
   const isAdmin = user?.role === "admin";
   const canDirectDelete = isAdmin;
+  // One request at a time: a second one would replace the pending request.
+  const requestPending = asset.approvalRequest?.status === "pending";
+  // Technicians can't move an Out of Order device, so don't offer it.
+  const canReassign =
+    !!user?.permissions?.canEditAsset && !requestPending && (asset.status !== "retired" || isAdmin);
   const handleSendConfirmation = async () => {
     setSendingConfirmation(true);
     try {
@@ -233,9 +241,26 @@ export default function AssetDetailScreen() {
   };
 
   const handleConfirmReassign = async () => {
+    // Same rules as the edit form: the device becomes In Use, so it needs a
+    // valid O365 email (the confirmation goes there) and a known site.
+    const invalid = (msg: string) => {
+      if (Platform.OS === "web") window.alert(msg);
+      else Alert.alert("Check the details", msg);
+    };
     if (!reassignName.trim()) {
-      if (Platform.OS === "web") window.alert("Please enter the new assignee name.");
-      else Alert.alert("Missing Name", "Please enter the new assignee name.");
+      invalid("Please enter the new assignee name.");
+      return;
+    }
+    if (!reassignEmail.trim()) {
+      invalid("Please enter the new custodian's O365 email.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(reassignEmail.trim())) {
+      invalid("Please enter a valid email address (e.g. name@encalm.com).");
+      return;
+    }
+    if (reassignLocation.trim() && !parseLocation(reassignLocation).site) {
+      invalid("Please select a Location (DEL, HYD, GOA, BUG or NAG).");
       return;
     }
     setReassignSubmitting(true);
@@ -274,6 +299,8 @@ export default function AssetDetailScreen() {
   };
 
   const handleResolveApproval = async (approved: boolean) => {
+    if (resolving) return;
+    setResolving(true);
     try {
       if (Platform.OS !== "web") {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -286,6 +313,8 @@ export default function AssetDetailScreen() {
       const msg = err?.message || "Failed to process approval.";
       if (Platform.OS === "web") window.alert(`Error: ${msg}`);
       else Alert.alert("Error", msg);
+    } finally {
+      setResolving(false);
     }
   };
 
@@ -397,7 +426,7 @@ export default function AssetDetailScreen() {
                 marginRight: Platform.OS === "web" ? 20 : 14,
               }}
             >
-              {user?.permissions?.canEditAsset ? (
+              {canReassign ? (
                 <Pressable
                   onPress={() => {
                     setReassignName("");
@@ -523,6 +552,7 @@ export default function AssetDetailScreen() {
               <View style={{ flexDirection: "row", gap: 8, marginTop: 12, justifyContent: "flex-end" }}>
                 <Pressable
                   onPress={() => handleResolveApproval(false)}
+                  disabled={resolving}
                   style={({ pressed }) => [
                     styles.bannerActionBtn,
                     {
@@ -540,6 +570,7 @@ export default function AssetDetailScreen() {
 
                 <Pressable
                   onPress={() => handleResolveApproval(true)}
+                  disabled={resolving}
                   style={({ pressed }) => [
                     styles.bannerActionBtn,
                     {
@@ -772,7 +803,7 @@ export default function AssetDetailScreen() {
             the device is returned (Available) or marked Out of Order.
           </Text>
         </View>
-      ) : canDirectDelete || user?.permissions?.canRequestApproval ? (
+      ) : canDirectDelete || (user?.permissions?.canRequestApproval && !requestPending) ? (
       <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
         <Pressable
           onPress={handleDeletePress}

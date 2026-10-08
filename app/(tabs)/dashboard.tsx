@@ -32,9 +32,12 @@ function formatMoney(n: number): string {
   return formatRupees(n, { compact: true });
 }
 
+/** Whole calendar days from today (0 = expires today, 1 = tomorrow). */
 function daysUntil(dateStr: string): number {
-  const t = new Date(dateStr).getTime();
-  return Math.floor((t - Date.now()) / (1000 * 60 * 60 * 24));
+  const d = new Date(`${dateStr.slice(0, 10)}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 export default function DashboardScreen() {

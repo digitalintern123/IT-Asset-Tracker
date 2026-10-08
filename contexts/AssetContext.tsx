@@ -75,6 +75,12 @@ function assignmentMails(
     );
 }
 
+const PENDING_REQUEST_MESSAGE =
+  "This device already has a request waiting for IT Admin approval. Wait for it to be approved or rejected first.";
+
+const CONFIRMATIONS_UNKNOWN_MESSAGE =
+  "Couldn't check whether this device's user has confirmed receipt. Please refresh and try again.";
+
 const DELETE_LOCKED_MESSAGE =
   "This device's user has confirmed receipt, so it can't be deleted until it is returned (Available) or marked Out of Order.";
 
@@ -252,6 +258,13 @@ const AssetContext = createContext<AssetContextValue | undefined>(undefined);
 
 export function AssetProvider({ children }: { children: React.ReactNode }) {
   const [assets, setAssets] = useState<Asset[]>([]);
+  // Latest asset list for async mutations: callbacks created before an
+  // earlier save finished must not write back a stale copy of the list.
+  const assetsRef = useRef<Asset[]>([]);
+  assetsRef.current = assets;
+  // False when the Asset Confirmations list couldn't be read on the last
+  // load: the delete lock then can't be known, so deletes are refused.
+  const confirmationsLoadedRef = useRef(true);
   const [loaded, setLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -273,6 +286,17 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       // Ephemeral cache write failure is non-fatal
     }
   }, []);
+
+  /** Apply a change to the latest list, then persist it. */
+  const commitAssets = useCallback(
+    async (change: (list: Asset[]) => Asset[]) => {
+      const next = change(assetsRef.current);
+      assetsRef.current = next;
+      setAssets(next);
+      await updateCache(next);
+    },
+    [updateCache]
+  );
 
   // 1. Initial hydration from cache
   useEffect(() => {
@@ -326,8 +350,10 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       if (token) {
         try {
           items = applyConfirmations(serverItems, await fetchConfirmations(token));
+          confirmationsLoadedRef.current = true;
         } catch (confirmErr) {
           console.warn("Could not load assignment confirmations:", confirmErr);
+          confirmationsLoadedRef.current = false;
         }
       }
       setAssets(items);
@@ -356,22 +382,37 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       console.log("Device reconnected online. Replaying pending offline mutations...");
       const token = (await getValidAccessToken()) || user?.accessToken;
 
-      await drainOfflineQueue(async (mutation) => {
+      const result = await drainOfflineQueue(async (mutation) => {
+        const targetId = mutation.asset.spItemId || mutation.asset.id;
         try {
           if (mutation.action === "create") {
             await apiCreateAsset(mutation.asset, token || undefined);
           } else if (mutation.action === "update") {
-            const targetId = mutation.asset.spItemId || mutation.asset.id;
-            await apiUpdateAsset(targetId, mutation.asset, token || undefined, mutation.etag);
+            try {
+              await apiUpdateAsset(targetId, mutation.asset, token || undefined, mutation.etag);
+            } catch (err: any) {
+              // Someone else changed the device while this edit was offline:
+              // merge (offline values win where both changed) and save again.
+              if (err?.statusCode !== 412 || !err?.serverAsset) throw err;
+              const merged = resolveAssetConflict(mutation.asset, err.serverAsset as Asset).mergedAsset;
+              await apiUpdateAsset(targetId, merged, token || undefined, (err.serverAsset as Asset).etag ?? undefined);
+            }
           } else if (mutation.action === "delete") {
-            const targetId = mutation.asset.spItemId || mutation.asset.id;
             await apiDeleteAsset(targetId, token || undefined);
           }
           return true;
-        } catch {
-          return false;
+        } catch (err: any) {
+          if (isRecoverableNetworkError(err)) return false;
+          const status = Number(err?.statusCode) || 0;
+          // 4xx (bad data, missing column, permission) won't fix itself.
+          return status >= 400 && status < 500 && status !== 408 && status !== 429 ? "permanent" : false;
         }
       });
+      if (result.failed > 0) {
+        setSyncError(
+          `${result.failed} change${result.failed === 1 ? "" : "s"} made while offline couldn't be saved to SharePoint. Please check the device${result.failed === 1 ? "" : "s"} and make the change again.`
+        );
+      }
 
       refresh();
     };
@@ -450,9 +491,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
 
       // Demo Mode
       if (user?.isDemo) {
-        const next = [newAsset, ...assets];
-        setAssets(next);
-        await updateCache(next);
+        await commitAssets((list) => [newAsset, ...list]);
         return newAsset;
       }
 
@@ -472,9 +511,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
 
       if (!isNetworkOnline()) {
         await enqueueOfflineMutation("create", newAsset);
-        const next = [newAsset, ...assets];
-        setAssets(next);
-        await updateCache(next);
+        await commitAssets((list) => [newAsset, ...list]);
         sendCreateMails(newAsset);
         return newAsset;
       }
@@ -487,13 +524,13 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         const confirmed: Asset = {
           ...newAsset,
           ...createdAsset,
-          id: stableId, // Ensure stable ID is preserved
+          // SharePoint may have moved to the next free number if another
+          // device took this ID meanwhile.
+          id: createdAsset?.id || stableId,
           assignmentHistory: initialHistory,
           _syncStatus: "synced",
         };
-        const next = [confirmed, ...assets];
-        setAssets(next);
-        await updateCache(next);
+        await commitAssets((list) => [confirmed, ...list]);
         sendCreateMails(confirmed);
         return confirmed;
       } catch (err: any) {
@@ -505,9 +542,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         console.warn("API create failed (offline), queueing:", err);
         newAsset._syncStatus = "pending_create";
         await enqueueOfflineMutation("create", newAsset);
-        const next = [newAsset, ...assets];
-        setAssets(next);
-        await updateCache(next);
+        await commitAssets((list) => [newAsset, ...list]);
         return newAsset;
       } finally {
         setSyncing(false);
@@ -529,7 +564,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         throw new Error("Unauthorized: Your role does not allow editing assets.");
       }
 
-      const existing = assets.find((a) => matchesAsset(a, id));
+      const existing = assetsRef.current.find((a) => matchesAsset(a, id));
       if (!existing) {
         throw new Error(`Asset with ID "${id}" not found.`);
       }
@@ -552,6 +587,9 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       //    Nothing changes yet: the device stays with its current user and a
       //    pending reassignment request is recorded instead.
       if (!opts?.approvedBy && needsReassignApproval(existing, input, user?.role === "admin")) {
+        if (existing.approvalRequest?.status === "pending") {
+          throw new Error(PENDING_REQUEST_MESSAGE);
+        }
         const request: ApprovalRequest = {
           id: `appr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
           action: "reassign",
@@ -615,9 +653,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
 
       // Demo Mode (no real email is sent)
       if (user?.isDemo) {
-        const next = assets.map((a) => (matchesAsset(a, id) ? updatedAsset : a));
-        setAssets(next);
-        await updateCache(next);
+        await commitAssets((list) => list.map((a) => (matchesAsset(a, id) ? updatedAsset : a)));
         return updatedAsset;
       }
 
@@ -642,9 +678,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       // Offline mode handling
       if (!isNetworkOnline()) {
         await enqueueOfflineMutation("update", updatedAsset, existing.etag);
-        const next = assets.map((a) => (matchesAsset(a, id) ? updatedAsset : a));
-        setAssets(next);
-        await updateCache(next);
+        await commitAssets((list) => list.map((a) => (matchesAsset(a, id) ? updatedAsset : a)));
         sendMails();
         return updatedAsset;
       }
@@ -669,9 +703,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
           _syncStatus: "synced" as const,
         };
 
-        const next = assets.map((a) => (matchesAsset(a, id) ? merged : a));
-        setAssets(next);
-        await updateCache(next);
+        await commitAssets((list) => list.map((a) => (matchesAsset(a, id) ? merged : a)));
         sendMails();
         return merged;
       } catch (err: any) {
@@ -688,11 +720,33 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
               ? `Conflict on: ${conflict.conflictingFields.join(", ")}. Your values were kept — please review.`
               : "Changes merged with cloud modifications."
           );
-          const next = assets.map((a) => (matchesAsset(a, id) ? conflict.mergedAsset : a));
-          setAssets(next);
-          await updateCache(next);
+          // Save the merged result against the server's current version;
+          // emails go out only once SharePoint has the change.
+          const mergedAsset = { ...conflict.mergedAsset, _syncStatus: "synced" as const };
+          let saved: Asset;
+          try {
+            const retried = await apiUpdateAsset(
+              existing.spItemId || existing.id,
+              mergedAsset,
+              token || undefined,
+              serverAsset.etag
+            );
+            saved = {
+              ...mergedAsset,
+              ...retried,
+              assignmentHistory: mergedAsset.assignmentHistory,
+              events: mergedAsset.events,
+              _syncStatus: "synced",
+            };
+          } catch (retryErr: any) {
+            setSyncError(
+              "Someone else changed this device at the same time and your edit could not be saved. Please refresh and try again."
+            );
+            throw retryErr;
+          }
+          await commitAssets((list) => list.map((a) => (matchesAsset(a, id) ? saved : a)));
           sendMails();
-          return conflict.mergedAsset;
+          return saved;
         }
 
         // Network error fallback
@@ -703,9 +757,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         }
         updatedAsset._syncStatus = "pending_update";
         await enqueueOfflineMutation("update", updatedAsset, existing.etag);
-        const next = assets.map((a) => (matchesAsset(a, id) ? updatedAsset : a));
-        setAssets(next);
-        await updateCache(next);
+        await commitAssets((list) => list.map((a) => (matchesAsset(a, id) ? updatedAsset : a)));
         sendMails();
         return updatedAsset;
       } finally {
@@ -722,17 +774,18 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         throw new Error("Unauthorized: Only IT Administrators can permanently delete assets.");
       }
 
-      const existing = assets.find((a) => matchesAsset(a, id));
+      const existing = assetsRef.current.find((a) => matchesAsset(a, id));
       if (!existing) return;
       if (isDeleteLocked(existing)) {
         throw new Error(DELETE_LOCKED_MESSAGE);
       }
+      if (!user?.isDemo && !confirmationsLoadedRef.current && openCustodyRecord(existing)?.assigneeEmail) {
+        throw new Error(CONFIRMATIONS_UNKNOWN_MESSAGE);
+      }
 
       // Demo Mode
       if (user?.isDemo) {
-        const next = assets.filter((a) => !matchesAsset(a, id));
-        setAssets(next);
-        await updateCache(next);
+        await commitAssets((list) => list.filter((a) => !matchesAsset(a, id)));
         return;
       }
 
@@ -746,9 +799,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       // Offline mode handling
       if (!isNetworkOnline()) {
         await enqueueOfflineMutation("delete", existing, existing.etag);
-        const next = assets.filter((a) => !matchesAsset(a, id));
-        setAssets(next);
-        await updateCache(next);
+        await commitAssets((list) => list.filter((a) => !matchesAsset(a, id)));
         return;
       }
 
@@ -758,9 +809,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       try {
         const targetId = existing.spItemId || existing.id;
         await apiDeleteAsset(targetId, token || undefined);
-        const next = assets.filter((a) => !matchesAsset(a, id));
-        setAssets(next);
-        await updateCache(next);
+        await commitAssets((list) => list.filter((a) => !matchesAsset(a, id)));
       } catch (err: any) {
         if (!isRecoverableNetworkError(err)) {
           // Re-throw without touching local state, so the list does not show
@@ -771,9 +820,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         }
         console.warn("Delete API failed (offline), enqueuing offline delete:", err);
         await enqueueOfflineMutation("delete", existing, existing.etag);
-        const next = assets.filter((a) => !matchesAsset(a, id));
-        setAssets(next);
-        await updateCache(next);
+        await commitAssets((list) => list.filter((a) => !matchesAsset(a, id)));
       } finally {
         setSyncing(false);
       }
@@ -792,7 +839,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         reason?: string;
       }
     ): Promise<Asset | undefined> => {
-      const existing = assets.find((a) => matchesAsset(a, id));
+      const existing = assetsRef.current.find((a) => matchesAsset(a, id));
       if (!existing) {
         throw new Error(`Asset ${id} not found.`);
       }
@@ -823,9 +870,20 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         throw new Error("Unauthorized: Your role does not allow requesting changes.");
       }
 
-      const existing = assets.find((a) => matchesAsset(a, id));
+      const existing = assetsRef.current.find((a) => matchesAsset(a, id));
       if (!existing) {
         throw new Error(`Asset ${id} not found.`);
+      }
+      if (existing.approvalRequest?.status === "pending") {
+        throw new Error(PENDING_REQUEST_MESSAGE);
+      }
+      if (
+        request.action === "delete" &&
+        !user?.isDemo &&
+        !confirmationsLoadedRef.current &&
+        openCustodyRecord(existing)?.assigneeEmail
+      ) {
+        throw new Error(CONFIRMATIONS_UNKNOWN_MESSAGE);
       }
       if (request.action === "delete" && isDeleteLocked(existing)) {
         throw new Error(DELETE_LOCKED_MESSAGE);
@@ -865,7 +923,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       approved: boolean,
       decisionNotes?: string
     ): Promise<void> => {
-      const existing = assets.find((a) => matchesAsset(a, id));
+      const existing = assetsRef.current.find((a) => matchesAsset(a, id));
       if (!existing || !existing.approvalRequest) {
         return;
       }
@@ -964,7 +1022,8 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       const token = user?.isDemo ? null : (await getValidAccessToken()) || user?.accessToken;
       const by = user?.name || "IT Staff";
       // Work from a running list so each new ID sees the ones created before it.
-      let working = [...assets];
+      let working = [...assetsRef.current];
+      const importedAssets: Asset[] = [];
       const results: { ok: boolean; id?: string; error?: string }[] = [];
 
       setSyncing(true);
@@ -994,28 +1053,28 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
             };
             if (!user?.isDemo) {
               const saved = await apiCreateAsset(asset, token || undefined);
-              asset = { ...asset, ...saved, id, assignmentHistory: history, events: created.events, _syncStatus: "synced" };
+              asset = { ...asset, ...saved, id: saved?.id || id, assignmentHistory: history, events: created.events, _syncStatus: "synced" };
             }
             working = [asset, ...working];
-            results.push({ ok: true, id });
+            importedAssets.unshift(asset);
+            results.push({ ok: true, id: asset.id });
           } catch (err: any) {
             results.push({ ok: false, error: err?.message || "Failed to save" });
           }
           onProgress?.(i + 1);
         }
       } finally {
-        setAssets(working);
-        await updateCache(working);
+        await commitAssets((list) => [...importedAssets, ...list]);
         setSyncing(false);
       }
       return results;
     },
-    [assets, user?.permissions, user?.isDemo, user?.accessToken, user?.name, getValidAccessToken, updateCache]
+    [user?.permissions, user?.isDemo, user?.accessToken, user?.name, getValidAccessToken, commitAssets]
   );
 
   const sendConfirmationRequest = useCallback(
     async (id: string): Promise<"sent" | "draft" | "failed"> => {
-      const existing = assets.find((a) => matchesAsset(a, id));
+      const existing = assetsRef.current.find((a) => matchesAsset(a, id));
       const rec = existing ? openCustodyRecord(existing) : undefined;
       if (!existing || !rec?.assigneeEmail) {
         throw new Error("This device has no current user with an email to confirm.");

@@ -39,14 +39,18 @@ function trimmed(s?: string | null): string {
 }
 
 /**
- * True when a non-admin is moving an In Use device to a different user.
- * Returning a device (no assignee / not In Use) needs no approval.
+ * True when a non-admin moves a device someone holds (In Use, or in
+ * Maintenance while still held) to a different user. Returning a device
+ * (Available / Out of Order) needs no approval. Maintenance counts too, so
+ * In Use → Maintenance (new user) → In Use can't skip the approval.
  */
 export function needsReassignApproval(existing: Asset, input: AssetInput, isAdmin: boolean): boolean {
   if (isAdmin) return false;
-  if (existing.status !== "in_use") return false;
-  if (input.status !== "in_use") return false;
-  const from = trimmed(existing.assignee).toLowerCase();
+  const held = existing.status === "in_use" || (existing.status === "maintenance" && !!openCustodyRecord(existing));
+  if (!held) return false;
+  if (input.status !== "in_use" && input.status !== "maintenance") return false;
+  const holder = existing.status === "in_use" ? existing.assignee : openCustodyRecord(existing)?.assignee;
+  const from = trimmed(holder).toLowerCase();
   const to = trimmed(input.assignee).toLowerCase();
   return !!to && from !== to;
 }
@@ -136,6 +140,16 @@ export function eventsForUpdate(
         assigneeEmail: ctx.assigneeEmail || undefined,
         approvedBy: ctx.approvedBy,
       }),
+    );
+  } else if (ctx.assigneeEmail && !releasing) {
+    // Same holder, corrected email: update the open record so the
+    // confirmation request goes to (and can be confirmed by) the right
+    // account. A confirmation by the old address no longer applies.
+    const email = trimmed(ctx.assigneeEmail);
+    history = history.map((r) =>
+      !r.returnedAt && trimmed(r.assigneeEmail).toLowerCase() !== email.toLowerCase()
+        ? { ...r, assigneeEmail: email, confirmedAt: undefined, confirmedBy: undefined }
+        : r,
     );
   }
 
