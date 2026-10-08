@@ -37,6 +37,12 @@ import {
   roleSource,
 } from "@/lib/roles";
 
+/** What is kept in AsyncStorage (localStorage on web): never the tokens. */
+function storedProfile(u: AuthUser): AuthUser {
+  const { accessToken: _a, expiresAt: _e, ...rest } = u;
+  return rest;
+}
+
 /** Role is always derived from the signed id_token, never from storage. */
 function roleFromIdToken(email: string, idToken?: string) {
   const tokenRoles = parseJwtRoles(idToken);
@@ -174,12 +180,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // Load credentials from secure storage. The stored role is never
             // trusted: it is re-derived from the signed id_token (viewer if none).
             const tokens = await getSecureTokens();
-            if (tokens) {
+            if (!tokens?.accessToken) {
+              // Tokens live only for the browser session; without them the
+              // saved profile is stale (e.g. a shared kiosk after the tab was
+              // closed), so start signed out instead of reusing it.
+              await AsyncStorage.removeItem(PROFILE_STORAGE_KEY);
+            } else {
               tokensRef.current = tokens;
-              profile.accessToken = tokens.accessToken;
-              profile.expiresAt = tokens.expiresAt;
+              setUser({
+                ...profile,
+                accessToken: tokens.accessToken,
+                expiresAt: tokens.expiresAt,
+                ...roleFromIdToken(profile.email, tokens.idToken),
+              });
             }
-            setUser({ ...profile, ...roleFromIdToken(profile.email, tokens?.idToken) });
           }
         }
       } catch (err) {
@@ -218,7 +232,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { verifier: savedVerifier, state: savedState } = getAndClearPkceSession();
 
         // Validate state for CSRF mitigation
-        if (savedState && state && savedState !== state) {
+        // Fail closed: a callback without our own state + verifier is ignored.
+        if (!savedState || !state || savedState !== state || !savedVerifier) {
           console.error("PKCE State mismatch: potential CSRF detected.");
           return;
         }
@@ -246,7 +261,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
 
         setUser(authUser);
-        await AsyncStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(authUser));
+        await AsyncStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(storedProfile(authUser)));
       } catch (err) {
         console.error("PKCE token exchange failed:", err);
       }
@@ -304,7 +319,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
 
       setUser(authUser);
-      await AsyncStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(authUser));
+      await AsyncStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(storedProfile(authUser)));
     }
   }, []);
 
@@ -336,7 +351,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role,
         permissions: getPermissionsForRole(role),
       };
-      AsyncStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
+      AsyncStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(storedProfile(updated))).catch(() => {});
       return updated;
     });
   }, []);

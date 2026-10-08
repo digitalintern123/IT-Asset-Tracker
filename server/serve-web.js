@@ -134,7 +134,7 @@ const MAX_BODY_BYTES = 1_048_576; // 1 MB
 
 function parseBody(req) {
   return new Promise((resolve, reject) => {
-    let body = "";
+    const chunks = [];
     let size = 0;
     req.on("data", (chunk) => {
       size += chunk.length;
@@ -143,9 +143,11 @@ function parseBody(req) {
         reject(new Error("Request body too large"));
         return;
       }
-      body += chunk;
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     });
     req.on("end", () => {
+      // Decode once so multi-byte characters split across chunks survive.
+      const body = Buffer.concat(chunks).toString("utf8");
       try {
         resolve(body ? JSON.parse(body) : {});
       } catch (err) {
@@ -252,7 +254,13 @@ const server = http.createServer(async (req, res) => {
           sendJson(res, 401, { error: "Unauthorized: Microsoft 365 sign-in could not be verified." });
           return;
         }
-        const email = (payload.email || payload.upn || payload.preferred_username || "").toLowerCase();
+        // The emergency ADMIN_EMAILS list only applies to the tenant's own
+        // members: guests carry an `idp` claim, and their email/username
+        // claims are not controlled by this tenant.
+        const isGuest = !!payload.idp && !String(payload.idp).includes(payload.tid || "\u0000");
+        const email = isGuest
+          ? ""
+          : String(payload.preferred_username || payload.upn || payload.email || "").toLowerCase();
         callerRole = roleForClaims(payload.roles, email);
       }
 
@@ -317,7 +325,13 @@ const server = http.createServer(async (req, res) => {
       } catch (apiErr) {
         console.error(`API Error on ${method} ${cleanUrl}:`, apiErr.message);
         const status = apiErr.statusCode || 500;
-        const payload = { error: apiErr.message || "SharePoint API Error" };
+        // Errors with a status code carry a message written for the user;
+        // anything else may contain raw Graph/Node details, so keep it in the log.
+        const payload = {
+          error: apiErr.statusCode && apiErr.message
+            ? apiErr.message
+            : "SharePoint request failed. Please try again or contact IT.",
+        };
         if (apiErr.serverAsset) payload.data = apiErr.serverAsset;
         sendJson(res, status, payload);
         return;

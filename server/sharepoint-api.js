@@ -25,9 +25,12 @@ let appTokenCache = { token: null, expiresAt: 0 };
 function request(options, data = null) {
   return new Promise((resolve, reject) => {
     const req = https.request(options, (res) => {
-      let body = "";
-      res.on("data", (chunk) => (body += chunk));
+      // Collect raw bytes: decoding chunk by chunk would split multi-byte
+      // characters (e.g. the "—" in locations) into U+FFFD.
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
       res.on("end", () => {
+        const body = Buffer.concat(chunks).toString("utf8");
         try {
           const parsed = body ? JSON.parse(body) : {};
           resolve({ status: res.statusCode, headers: res.headers, data: parsed });
@@ -214,10 +217,11 @@ async function resolveSiteId(token) {
 async function resolveListId(token, siteId) {
   if (cachedListId) return cachedListId;
 
-  const encodedName = encodeURIComponent(LIST_NAME);
+  // https.request rejects paths with raw spaces, so encode the whole filter.
+  const filter = encodeURIComponent(`displayName eq '${LIST_NAME.replace(/'/g, "''")}'`);
   const res = await request({
     hostname: GRAPH_HOST,
-    path: `/v1.0/sites/${siteId}/lists?$filter=displayName eq '${encodedName}'`,
+    path: `/v1.0/sites/${siteId}/lists?$filter=${filter}`,
     method: "GET",
     headers: { Authorization: `Bearer ${token}` },
     timeout: 10000,
@@ -260,7 +264,9 @@ async function resolveListId(token, siteId) {
     }
   }
 
-  throw new Error(`List "${LIST_NAME}" not found in SharePoint site.`);
+  const notFound = new Error(`List "${LIST_NAME}" not found in SharePoint site.`);
+  notFound.statusCode = 404;
+  throw notFound;
 }
 
 /**
