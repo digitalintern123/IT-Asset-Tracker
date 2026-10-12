@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server/serve-web.js",
     "serve": "node server/serve-web.js",
-    "build": "expo export -p web --output-dir web-build --clear"
+    "build": "expo export -p web --output-dir web-build --clear",
+    "build:iis": "npm run build && node scripts/build-iis.js"
   },
   "dependencies": {
     "@babel/core": "^7.25.2",

@@ -82,23 +82,55 @@ bundle fails the container `HEALTHCHECK` instead of being promoted.
 
 Webroot: `C:\inetpub\vhosts\tracker.encalmhospitality.com\httpdocs`
 
-1. Build locally (section 1).
+IIS only serves the **built** site. Never deploy the source branch (`main`)
+into httpdocs: that would publish the source code and still not run.
+
+### Automatic: Plesk Git (recommended)
+
+On every push to `main`, GitHub Actions (`.github/workflows/deploy-iis.yml`)
+runs `npm run build:iis` and force-pushes **only the built site**
+(`web-build/` incl. `web.config`, fonts, favicons) to the **`iis-deploy`**
+branch. Plesk pulls that branch into httpdocs. Render keeps deploying `main`.
+
+1. Plesk → *Websites & Domains* → **Git** → *Create repository*:
+
+   | Field | Value |
+   |---|---|
+   | Repository URL | `git@github.com:digitalintern123/IT-Asset-Tracker.git` |
+   | Repository name | `IT-Asset-Tracker` |
+   | Deployment mode | **Automatic** |
+   | Deployment directory | `\httpdocs` |
+   | Enable post deployment actions | **off** — nothing to build on the server |
+
+2. Plesk shows an **SSH public key** for the repository. GitHub → repo
+   *Settings → Deploy keys → Add deploy key*, paste it, leave *Allow write
+   access* **off**.
+3. Create, then open the repository's settings in Plesk and set
+   **Branch: `iis-deploy`**.
+4. Copy the repository's **Webhook URL** from Plesk. GitHub → *Settings →
+   Webhooks → Add webhook*: paste it, content type `application/json`,
+   *Just the push event*. Now each new `iis-deploy` build is pulled
+   automatically.
+5. First time only: delete the old `_expo` folder in httpdocs (Plesk copies
+   files over but doesn't remove stale ones), then *Deploy now*.
+
+Check a deploy: GitHub → *Actions* → "Publish IIS build" is green, and
+Plesk → Git shows the latest `IIS build of <sha>` commit.
+
+### Manual fallback: zip upload
+
+1. Build locally: `npm ci --legacy-peer-deps && npm run build:iis` (section 1
+   applies; `build:iis` also adds `web.config`, fonts and favicons).
 2. Zip the **contents** of `web-build\`:
    ```powershell
    Compress-Archive -Path "web-build\*" -DestinationPath "$env:USERPROFILE\Downloads\web-build.zip" -Force
    ```
 3. Plesk → Files → `httpdocs`: delete the existing `_expo` folder, upload the
    zip, right-click → **Extract** into `httpdocs` (not a subfolder).
-4. **`web.config`** — copy `server/web.config` to `httpdocs\web.config`. It
-   provides:
-   - the SPA fallback rewrite, so `/login`, `/scan` etc. resolve on refresh
-   - `.ttf` / `.json` / `.webmanifest` MIME maps
-   - `allowDoubleEscaping` and a `hiddenSegments` exception (left over from the
-     old pnpm layout; harmless)
-5. **Fonts / font patch** — only needed if the bundle references
-   vector-icon fonts again (section 4).
 
----
+`web.config` (from `server/web.config`) provides the SPA fallback rewrite (so
+`/login`, `/scan` etc. resolve on refresh) and the `.ttf` / `.json` /
+`.webmanifest` MIME maps.
 
 ## 4. Font patch
 
