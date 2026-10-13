@@ -68,6 +68,9 @@ ENV STATIC_DIR=web-build
 COPY server ./server
 COPY --from=builder /app/web-build ./web-build
 
+# Don't run the server as root.
+USER node
+
 EXPOSE 10000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \

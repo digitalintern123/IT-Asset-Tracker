@@ -1,4 +1,4 @@
-# Builds the web app on every push to main and publishes ONLY the built site
+# Type-checks and tests every push to main, then publishes ONLY the built site
 # (web-build/ + web.config) to the `iis-deploy` branch. Plesk pulls that
 # branch into httpdocs (see docs/DEPLOY.md §3). Render keeps deploying main.
 name: Publish IIS build
@@ -28,6 +28,13 @@ jobs:
 
       - name: Install
         run: npm ci --legacy-peer-deps
+
+      # A failing check stops here, so it never reaches the live site.
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Tests
+        run: npm test
 
       - name: Build for IIS
         run: npm run build:iis

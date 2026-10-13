@@ -7,6 +7,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const sharepointApi = require("./sharepoint-api");
+const { SECURITY_HEADERS } = require("./security-headers");
 
 const STATIC_ROOT = path.resolve(
   __dirname,
@@ -109,6 +110,7 @@ function sendFile(filePath, res) {
   }
 
   res.writeHead(200, {
+    ...SECURITY_HEADERS,
     "content-type": MIME_TYPES[extension] || "application/octet-stream",
     "cache-control": cacheControl,
   });

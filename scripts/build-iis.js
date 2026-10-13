@@ -62,7 +62,25 @@ if (fs.existsSync(jsDir)) {
 }
 console.log(patched ? `Patched font paths in ${patched} file(s).` : "No vector-icon font paths in bundle; nothing to patch.");
 
-// IIS: SPA fallback rewrite + MIME types.
+// Every inline script must be allowed by the Content-Security-Policy hash
+// list, or browsers would block it and the app would not start.
+const crypto = require("crypto");
+const { INLINE_SCRIPT_HASHES } = require(path.join(root, "server/security-headers.js"));
+const walk = (dir) =>
+  fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)],
+  );
+for (const page of walk(out).filter((f) => f.endsWith(".html"))) {
+  const html = fs.readFileSync(page, "utf8");
+  for (const m of html.matchAll(/<script(?: type="module")?>([\s\S]*?)<\/script>/g)) {
+    const hash = `'sha256-${crypto.createHash("sha256").update(m[1]).digest("base64")}'`;
+    if (!INLINE_SCRIPT_HASHES.includes(hash)) {
+      fail(`${path.relative(out, page)} has an inline script not allowed by the CSP: add ${hash} to server/security-headers.js`);
+    }
+  }
+}
+
+// IIS: SPA fallback rewrite, MIME types and security headers.
 fs.copyFileSync(path.join(root, "server/web.config"), path.join(out, "web.config"));
 
 console.log("web-build/ is ready for IIS.");

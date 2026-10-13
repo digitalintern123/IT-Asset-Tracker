@@ -1,0 +1,90 @@
+const path = require("path"), fs = require("fs"), Module = require("module");
+const repo = path.join(__dirname, ".."), sample = path.join(__dirname, "fixtures/inventory-sample.xlsx");
+const ts = require(path.join(repo, "node_modules/typescript"));
+let fail = 0; const ok = (n, c, x = "") => { if (!c) fail++; console.log(`${c ? "PASS" : "FAIL"} ${n} ${x}`); };
+const cache = {};
+function loadTs(rel) {
+  const full = path.join(repo, rel); if (cache[full]) return cache[full];
+  const out = ts.transpileModule(fs.readFileSync(full, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true, target: ts.ScriptTarget.ES2020 } }).outputText;
+  const m = { exports: {} }; cache[full] = m.exports;
+  const req = (id) => id === "react-native" ? { Platform: { OS: "ios" }, Linking: { openURL: async () => { opened.push(1); } } } : id.startsWith("@/") ? loadTs(id.slice(2) + ".ts") : id.startsWith("./") ? loadTs(path.join(path.dirname(rel), id) + ".ts") : require(id);
+  new Function("module", "exports", "require", out)(m, m.exports, req); return m.exports;
+}
+let opened = [];
+const I = loadTs("lib/importSheet.ts"), M = loadTs("lib/mail.ts"), sp = loadTs("lib/sharepoint.ts"), R = loadTs("lib/reports.ts");
+const readXlsx = require(path.join(repo, "node_modules/read-excel-file/node"));
+(async () => {
+  const sheetMod = await readXlsx.default ? readXlsx.default : readXlsx;
+  let sheet = await (typeof sheetMod === "function" ? sheetMod(sample) : sheetMod.readSheet(sample));
+  if (sheet && !Array.isArray(sheet[0]) && sheet[0] && sheet[0].data) sheet = sheet[0].data;
+  const defaults = { category: "Desktop", vertical: "" };
+  const res = I.parseInventorySheet(sheet, [], defaults);
+  ok("sample: no missing headers", res.missingHeaders.length === 0, JSON.stringify(res.missingHeaders));
+  ok("sample: 3 rows, all ok", res.rows.length === 3 && res.rows.every((r) => r.ok), JSON.stringify(res.rows.map((r) => r.problems)));
+  const [r1, r2, r3] = res.rows;
+  ok("host name / make / model / serial", r1.input.name === "GOAEHPL-NB001" && r1.input.make && /Latitude/i.test(r1.input.model) && r1.input.serialNumber === "TST0001", JSON.stringify(r1.input));
+  ok("NB -> Laptop, EHPL -> Hospitality", r1.input.category === "Laptop" && r1.input.vertical === "ENCALM HOSPITALITY PVT LTD");
+  ok("Goa -> GOA site with used-in detail", r1.input.location.startsWith("GOA") , r1.input.location);
+  ok("some row carries Porta Cabin detail", res.rows.some((r) => /Porta Cabin/i.test(r.input.location)), res.rows.map((r) => r.input.location).join(" | "));
+  ok("row 1 email trimmed (no nbsp)", r1.assigneeEmail && !/\s| /.test(r1.assigneeEmail), JSON.stringify(r1.assigneeEmail));
+  ok("row 2: first email used, other into notes", r2.assigneeEmail === "rnm.test@example.com" && r2.input.notes.includes("second.user@example.com"), JSON.stringify([r2.assigneeEmail, r2.input.notes]));
+  ok("user -> in_use", res.rows.every((r) => r.input.status === (r.input.assignee ? "in_use" : "available")));
+  ok("department / criticality / operational / class carried", !!r1.input.department && ["Low","Medium","High",""].includes(r1.input.criticality) && ["Operational","Non Operational"].includes(r1.input.operationalStatus) && r1.input.assetClass === "Hardware", JSON.stringify([r1.input.department, r1.input.criticality, r1.input.operationalStatus, r1.input.assetClass]));
+  console.log("  row1:", JSON.stringify(r1.input));
+  // dup / errors
+  const dup = I.parseInventorySheet(sheet, [{ serialNumber: "tst0001" }], defaults);
+  ok("serial already in register -> error", !dup.rows[0].ok && dup.rows[0].problems[0].message.includes("already"));
+  const hdr = ["COMPUTER NAME / NUMBER", "DEVICE_SERIAL NUMBER (service tag)", "LOCATION", "USER NAME", "User Email ID"];
+  const t = I.parseInventorySheet([hdr, ["X-NB1", "S1", "Delhi"], ["X-NB2", "s1", "Mumbai"], ["", "", ""], ["X-PC3", "S3", "Vizag", "Amit", ""]], [], { category: "Monitor", vertical: "ENCALM HOTEL" });
+  ok("blank rows skipped", t.rows.length === 3);
+  ok("repeated serial in file -> error (case-insensitive)", t.rows[1].problems.some((p) => p.message.includes("repeats row 2")));
+  ok("unknown location -> error", t.rows[1].problems.some((p) => p.message.includes('Unknown location "Mumbai"')));
+  ok("Delhi -> DEL, Vizag -> BUG", t.rows[0].input.location === "DEL" && t.rows[2].input.location === "BUG", t.rows[2].input.location);
+  ok("PC -> Desktop; default vertical warned", t.rows[2].input.category === "Desktop" && t.rows[2].input.vertical === "ENCALM HOTEL" && t.rows[2].problems.some((p) => p.level === "warning" && p.message.includes("Vertical")));
+  ok("user without email -> warning only", t.rows[2].ok && t.rows[2].problems.some((p) => p.message.includes("no email")));
+  ok("no recognisable headers -> missing", I.parseInventorySheet([["a", "b"]], [], defaults).missingHeaders.length === 3);
+  ok("template has the sheet headers", I.inventoryTemplateCsv().includes("COMPUTER NAME / NUMBER,COMPUTER MAKE") && I.inventoryTemplateCsv().includes('"Status (Operational/Non Operational)"') === false || I.inventoryTemplateCsv().includes("Status (Operational/Non Operational)"));
+  ok("template round-trips through parser", I.mapHeaders(I.inventoryTemplateCsv().replace(/^﻿/, "").trim().split(",")).accessories !== undefined);
+  // field mapping, both paths
+  const a = { ...r1.input, id: "ENC-1", accessories: "Power Cord, Bag", createdAt: "", updatedAt: "", assignmentHistory: [], events: [] };
+  const f = sp.toSpFields(a);
+  ok("client writes new columns", f.Department === a.department && f.OperationalStatus === "Operational" && f.AssetClass === "Hardware" && f.Accessories === "Power Cord, Bag");
+  ok("create omits unset new columns", !("Custodianship" in sp.toSpFields({ ...a, custodianship: "" }, "ENC-1")));
+  const back = sp.fromSpItem({ id: "1", fields: { ...f, AssetId: "ENC-1" } });
+  ok("client reads new columns", back.department === a.department && back.accessories === "Power Cord, Bag" && back.criticality === a.criticality);
+  const file = path.join(repo, "server/sharepoint-api.js");
+  const mod = new Module(file); mod.paths = Module._nodeModulePaths(path.dirname(file));
+  mod._compile(fs.readFileSync(file, "utf8") + "\nmodule.exports.__t={assetInputToSpFields,spItemToAsset};", file);
+  ok("server field map identical to client", JSON.stringify(mod.exports.__t.assetInputToSpFields(a)) === JSON.stringify(f));
+  ok("server reads new columns", mod.exports.__t.spItemToAsset({ id: "1", fields: { Title: "x", Department: "IT", OperationalStatus: "Non Operational" } }).operationalStatus === "Non Operational");
+  ok("CSV row has department", R.toCsv(R.flattenEvents([{ ...a, events: [{ id: "e", type: "created", at: "2026-01-01T00:00:00Z", by: "x" }] }])).includes(a.department));
+  // HTML escaping
+  const evil = { ...a, name: "<script>x</script>", accessories: "A&B" };
+  const m = M.buildAssignmentConfirmMail(evil, { assignee: "Rahul <b>", assigneeEmail: "encalmit@encalm.com" }, "IT", "https://t/confirm?a=1&b=2");
+  ok("HTML escapes values", !m.html.includes("<script>") && m.html.includes("&lt;script&gt;") && m.html.includes("A&amp;B") && m.html.includes("a=1&amp;b=2"));
+  ok("recipient not duplicated in CC", !m.cc.map((e) => e.toLowerCase()).includes("encalmit@encalm.com"));
+  // sender order
+  const calls = []; global.__st = {};
+  global.fetch = async (url, o) => { calls.push(url); const st = global.__st[url.includes("/users/") ? "shared" : "me"] || 202; return { ok: st < 300, status: st, text: async () => "", json: async () => ({}) }; };
+  const origWarn = console.warn; console.warn = () => {};
+  const msg = { to: ["a@x.com"], subject: "s", body: "b", html: "<p>b</p>", from: "corpit.helpdesk@encalm.com" };
+  ok("sends as helpdesk first", (await M.deliverMail("tok", msg)) === "sent" && calls.length === 1 && calls[0].includes("/users/corpit.helpdesk%40encalm.com/sendMail"));
+  calls.length = 0; global.__st = { shared: 403 };
+  ok("403 on shared -> /me", (await M.deliverMail("tok", msg)) === "sent" && calls.length === 2 && calls[1].endsWith("/me/sendMail"));
+  calls.length = 0; global.__st = { shared: 403, me: 403 }; opened = [];
+  ok("both fail -> draft", (await M.deliverMail("tok", msg)) === "draft");
+  console.warn = origWarn;
+  // privacy: reassignment mail to the new user never mentions the old user
+  const Wf = loadTs("lib/assetWorkflow.ts");
+  const prevA = { ...a, assignee: "Old Person", notes: "Also used by: old2@encalm.com\nOld Person project site", assignmentHistory: [{ id: "h1", assignee: "Old Person", assigneeEmail: "old.person@encalm.com", assignedAt: "2026-01-01" }] };
+  const nextIn = { ...prevA, assignee: "New Person" };
+  const wr = Wf.eventsForUpdate(prevA, nextIn, { by: "IT", assigneeEmail: "new.person@encalm.com", reason: "Handover from Old Person" });
+  const newRecs = Wf.newCustodyRecords(prevA.assignmentHistory, wr.history);
+  const pm = M.buildAssignmentConfirmMail({ ...prevA, ...nextIn, assignmentHistory: wr.history }, newRecs[0], "IT", "https://t/confirm");
+  const all = pm.subject + pm.body + pm.html;
+  ok("reassign mail: to new user only (+IT CC)", JSON.stringify(pm.to) === '["new.person@encalm.com"]' && !pm.cc.some((e) => /old/i.test(e)));
+  ok("reassign mail: no old user name/email, notes or reason", !/Old Person|old\.person|old2@|Handover from/i.test(all) && all.includes("Dear New,"));
+  ok("legacy Previous Custodian template removed", !fs.readFileSync(path.join(repo, "lib/notify.ts"), "utf8").includes("Previous Custodian"));
+  ok("confirm page wrong-account notice hides assignee", !fs.readFileSync(path.join(repo, "app/confirm.tsx"), "utf8").includes("It was assigned to ${record"));
+  console.log(fail ? `${fail} FAILED` : "ALL PASS"); process.exit(fail ? 1 : 0);
+})().catch((e) => { console.error(e); process.exit(1); });
