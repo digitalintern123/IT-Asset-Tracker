@@ -1,0 +1,28 @@
+const { chromium } = require("playwright");
+(async () => {
+  const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined });
+  const ctx = await browser.newContext({ viewport: { width: 900, height: 1500 } });
+  await ctx.addInitScript(() => { window.__mailto = []; const d = Object.getOwnPropertyDescriptor(window.Location.prototype, "href"); });
+  const page = await ctx.newPage();
+  const errors = []; page.on("pageerror", (e) => { if (!/jsdelivr/.test(e.message)) errors.push(e.message); });
+  const dialogs = []; page.on("dialog", async (d) => { dialogs.push(d.message()); await d.accept(); });
+  const navs = []; page.on("framenavigated", (f) => navs.push(f.url()));
+  const check = (n, c, x = "") => console.log(`${c ? "PASS" : "FAIL"} ${n} ${x}`);
+  await page.goto("http://localhost:10000/login", { waitUntil: "networkidle" });
+  await page.getByText("Explore in Demo Mode").click(); await page.waitForTimeout(1800);
+  await page.goto("http://localhost:10000/asset/ENC-LAP-2026-0001", { waitUntil: "networkidle" }); await page.waitForTimeout(1500);
+  const before = await page.locator("body").innerText();
+  const oldUser = (before.match(/Assigned to\s*\n\s*([^\n]+)/) || [])[1];
+  console.log("old user:", oldUser, "| status line:", (before.match(/In Use|Available|New Device/) || [])[0]);
+  await page.getByText("Reassign", { exact: true }).first().click(); await page.waitForTimeout(600);
+  await page.getByPlaceholder("Person or team").fill("Neha Verma");
+  await page.getByPlaceholder("name@encalm.com").fill("neha.verma@encalm.com");
+  await page.getByPlaceholder("e.g. Department transfer, replacement unit").fill(`Handover from ${oldUser}`);
+  await page.getByText(/Confirm|Transfer|Reassign/).last().click(); await page.waitForTimeout(2000);
+  check("success alert names new user + email only", dialogs.some((d) => d.includes("reassigned to Neha Verma") && d.includes("neha.verma@encalm.com")) && !dialogs.some((d) => oldUser && d.includes(oldUser)), JSON.stringify(dialogs));
+  check("no mailto navigation", !navs.some((u) => u.startsWith("mailto:")), JSON.stringify(navs.filter((u) => !u.startsWith("http"))));
+  const t = await page.locator("body").innerText();
+  check("custody shows awaiting confirmation from new user", t.includes("Awaiting confirmation from neha.verma@encalm.com"));
+  check("no page errors", errors.length === 0, errors.join(" | "));
+  await browser.close();
+})();

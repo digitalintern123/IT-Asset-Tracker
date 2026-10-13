@@ -1,6 +1,10 @@
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
+import { clearErrorLog, emailErrorReport, getErrorLog } from "@/lib/errorLog";
+
+// Set by CI (GitHub commit) so support can tell which release a user has.
+const BUILD_SHA = (process.env.EXPO_PUBLIC_BUILD_SHA || "local").slice(0, 7);
 import {
   Alert,
   Platform,
@@ -18,17 +22,19 @@ import { useAssets } from "@/contexts/AssetContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { UserRole, ROLE_LABELS, ROLE_DESCRIPTIONS } from "@/lib/roles";
-import { checkSetup, SetupReport } from "@/lib/setupCheck";
+import { checkSetup, fixSharePointSetup, MANAGE_SCOPE, SetupReport } from "@/lib/setupCheck";
 
 type LucideIconName = string;
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { assets, syncing, syncError, lastSyncedAt, refresh } = useAssets();
-  const { user, signOut, setDemoRole, getValidAccessToken } = useAuth();
+  const { user, signOut, setDemoRole, getValidAccessToken, getTokenForScopes } = useAuth();
+  const [fixing, setFixing] = useState(false);
   const router = useRouter();
   const [testingSp, setTestingSp] = useState(false);
   const [testResult, setTestResult] = useState<SetupReport | null>(null);
+  const [errorLog, setErrorLog] = useState(() => getErrorLog());
   const issues = testResult ? testResult.items.filter((i) => !i.ok).length : 0;
   // Alert.alert is a no-op on react-native-web.
   const notice = (title: string, message: string) => {
@@ -386,6 +392,48 @@ export default function SettingsScreen() {
                 </View>
               </View>
             ))}
+            {user?.role === "admin" && testResult.items.some((i) => !i.ok && i.fixable) ? (
+              <Pressable
+                disabled={fixing}
+                accessibilityRole="button"
+                onPress={async () => {
+                  setFixing(true);
+                  try {
+                    const manageToken = await getTokenForScopes([MANAGE_SCOPE]);
+                    const res = await fixSharePointSetup(manageToken);
+                    const lines = [
+                      res.created.length ? `Created:\n• ${res.created.join("\n• ")}` : "Nothing needed creating.",
+                      res.failed.length
+                        ? `Could not create:\n• ${res.failed.map((f) => `${f.name} — ${f.error}`).join("\n• ")}`
+                        : "",
+                      res.created.some((c) => c.startsWith("List"))
+                        ? "Next: set the Asset Confirmations list permissions (docs/DEPLOY.md)."
+                        : "",
+                    ].filter(Boolean);
+                    notice("SharePoint setup", lines.join("\n\n"));
+                    const token = (await getValidAccessToken()) || user?.accessToken;
+                    if (token) setTestResult(await checkSetup(token));
+                  } catch (err: any) {
+                    notice("SharePoint setup", err?.message || "Automatic setup failed.");
+                  } finally {
+                    setFixing(false);
+                  }
+                }}
+                style={({ pressed }) => ({
+                  alignSelf: "flex-start",
+                  marginTop: 4,
+                  paddingHorizontal: 14,
+                  paddingVertical: 9,
+                  borderRadius: 999,
+                  backgroundColor: colors.primary,
+                  opacity: fixing ? 0.6 : pressed ? 0.8 : 1,
+                })}
+              >
+                <Text style={{ color: "#FFFFFF", fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+                  {fixing ? "Fixing…" : "Fix automatically"}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
         <Row
@@ -549,11 +597,47 @@ export default function SettingsScreen() {
         ) : null}
       </Section>
 
+      {user?.role === "admin" ? (
+        <Section title="Diagnostics" colors={colors}>
+          <Row
+            icon="alert-triangle"
+            label="Error log on this device"
+            sublabel={
+              errorLog.length
+                ? `${errorLog.length} recorded · latest ${new Date(errorLog[errorLog.length - 1].at).toLocaleString()}: ${errorLog[errorLog.length - 1].message.slice(0, 120)}`
+                : "No errors recorded"
+            }
+            colors={colors}
+            onPress={() => setErrorLog(getErrorLog())}
+          />
+          {errorLog.length ? (
+            <>
+              <Row
+                icon="share-2"
+                label="Email the error log to IT"
+                sublabel="Opens a draft to Encalm IT with the latest errors (no passwords or tokens)"
+                colors={colors}
+                onPress={() => emailErrorReport(errorLog, `Signed in as ${user?.email}`)}
+              />
+              <Row
+                icon="trash-2"
+                label="Clear the error log"
+                colors={colors}
+                onPress={() => {
+                  clearErrorLog();
+                  setErrorLog([]);
+                }}
+              />
+            </>
+          ) : null}
+        </Section>
+      ) : null}
+
       <Section title="About" colors={colors}>
         <Row
           icon="info"
           label="Version"
-          sublabel="1.0.0 (Production Cloud)"
+          sublabel={`1.0.0 · build ${BUILD_SHA}`}
           colors={colors}
         />
         <Row

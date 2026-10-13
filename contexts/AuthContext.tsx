@@ -78,6 +78,8 @@ interface AuthContextValue {
   signInDemo: () => Promise<void>;
   signOut: () => Promise<void>;
   getValidAccessToken: () => Promise<string | null>;
+  /** Access token for extra Graph permissions (admin consent required), without re-signing in. */
+  getTokenForScopes: (scopes: string[]) => Promise<string>;
   setDemoRole: (role: UserRole) => void;
 }
 
@@ -340,6 +342,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(demoUser));
   }, []);
 
+  // Token with extra Graph permissions for one action (the existing session's
+  // refresh token is exchanged; nothing is stored).
+  const getTokenForScopes = useCallback(async (scopes: string[]): Promise<string> => {
+    const refreshToken = tokensRef.current?.refreshToken;
+    if (!refreshToken) throw new Error("Please sign out and sign in again, then retry.");
+    try {
+      const tokens = await silentRefreshToken(
+        refreshToken,
+        [...scopes.map((s) => (s.includes("://") ? s : `https://graph.microsoft.com/${s}`)), "offline_access"],
+      );
+      return tokens.accessToken;
+    } catch {
+      throw new Error(
+        `Microsoft 365 did not grant ${scopes.join(", ")}. An Entra admin must add it to the IT Asset Tracker app registration and grant admin consent (see docs/DEPLOY.md).`
+      );
+    }
+  }, []);
+
   // 7. Demo Role Switcher
   const setDemoRole = useCallback((role: UserRole) => {
     setUser((prev) => {
@@ -379,9 +399,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInDemo,
       signOut,
       getValidAccessToken,
+      getTokenForScopes,
       setDemoRole,
     }),
-    [user, loaded, signIn, signInDemo, signOut, getValidAccessToken, setDemoRole]
+    [user, loaded, signIn, signInDemo, signOut, getValidAccessToken, getTokenForScopes, setDemoRole]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

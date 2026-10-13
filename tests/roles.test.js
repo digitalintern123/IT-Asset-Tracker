@@ -64,7 +64,7 @@ function mockGraph({ cols = CORE, confExists = true, confCols = S.CONFIRMATION_C
   // (list ids are cached per session, so the "missing list" case runs first)
   mockGraph({ confExists: false });
   let rep = await S.checkSetup(token);
-  ok("no Confirmations list -> ✗ with fix", rep.items.some((i) => !i.ok && i.label.includes("Asset Confirmations") && i.detail.includes("Create it")));
+  ok("no Confirmations list -> ✗ with fix", rep.items.some((i) => !i.ok && i.label.includes("Asset Confirmations") && i.fixable && /create it/i.test(i.detail)));
   mockGraph();
   rep = await S.checkSetup(token);
   ok("all good -> ok, every item ✓", rep.ok && rep.items.every((i) => i.ok && !i.unknown), JSON.stringify(rep.items.filter((i) => !i.ok)));

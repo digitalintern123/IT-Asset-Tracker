@@ -20,6 +20,31 @@ It deploys two ways:
 
 ---
 
+## Quick setup (recommended order)
+
+Most of the Microsoft 365 / SharePoint setup below is automated:
+
+1. **Entra ID + Exchange — one script.** A tenant admin runs, from PowerShell:
+   ```powershell
+   Install-Module Microsoft.Graph, ExchangeOnlineManagement -Scope CurrentUser
+   ./scripts/setup-entra.ps1 -AdminUsers it.head@encalm.com -TechnicianUsers tech1@encalm.com,tech2@encalm.com
+   ```
+   It creates the app roles, the *IT Asset Admins* / *IT Asset Technicians*
+   groups and their role assignments, sets *Assignment required* = No, adds the
+   Graph permissions with admin consent (incl. `Sites.Manage.All`), and gives
+   the group members **Send As** on corpit.helpdesk. Safe to re-run; try
+   `-WhatIf` first. (Written for this tenant but not yet run against it —
+   watch its output.)
+2. **SharePoint — one click.** Sign in as an admin → Settings → **Test
+   SharePoint Connection** → **Fix automatically**. It adds the missing
+   register columns and creates the *Asset Confirmations* list. The signed-in
+   admin must be a site owner; the extra `Sites.Manage.All` permission is
+   requested only for this click.
+3. **SharePoint permissions** (manual, Graph can't set them): see §5
+   *SharePoint permissions* and *Assignment confirmations* below.
+4. **Plesk** (§3) and **uptime monitor** (§7).
+5. Run **Test SharePoint Connection** again — everything should be ✓.
+
 ## 1. Build (both targets)
 
 Requires Node 20 (npm 10).
@@ -196,6 +221,8 @@ Native (Android) builds use `asset-tracker://auth/callback`
   **Send As** on that mailbox (Exchange admin centre → Mailboxes →
   corpit.helpdesk → Delegation → Send as). Without it the email is sent from
   the IT user's own mailbox instead.
+- `Sites.Manage.All` — only requested when an admin clicks **Fix
+  automatically** (creates columns/lists). Normal sign-in doesn't ask for it.
 - `openid`, `profile`, `email`, `offline_access`
 
 **App roles — who can do what.** Roles come only from Entra ID app roles in
@@ -272,6 +299,30 @@ curl -s -o /dev/null -w "%{http_code}\n" https://<host>/nope.js      # 404
 ```
 
 ---
+
+## 7. Monitoring, diagnostics and backups
+
+**Uptime.** `.github/workflows/uptime.yml` checks the live site every 15
+minutes. When it is down the run fails (GitHub emails the repository owner)
+and an issue *"Site down (uptime check)"* is opened; it closes itself when the
+site is back. Optional repository variables (GitHub → Settings → Secrets and
+variables → Actions → Variables): `SITE_URL` (default
+`https://tracker.encalmhospitality.com`) and `RENDER_URL` (also checks
+`<RENDER_URL>/health`, which reports the running commit).
+
+**Diagnostics.** Crashes, unhandled errors and SharePoint sync/save errors are
+kept on each device (last 50, no tokens). Admins: Settings → *Diagnostics* →
+*Email the error log to IT*. A crash screen also has **Report to IT**.
+Settings → About shows the build (commit) a user is running.
+
+**Backups.** Report logs → *Register (Excel)* (re-importable via Import from
+Excel) and *Full backup (JSON)* (every device with custody history and audit
+events). Keep one each month. Also turn on SharePoint versioning: IT Asset
+Register → List settings → Versioning settings → keep 50 versions.
+
+**Releases.** Every push to `main` is type-checked and runs the unit tests
+(`npm test`) and browser tests (`npm run test:e2e`) before the IIS build is
+published; pull requests and other branches run the same checks (CI).
 
 ## SharePoint
 

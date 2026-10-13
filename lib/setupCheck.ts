@@ -41,6 +41,8 @@ export interface SetupItem {
   ok: boolean;
   /** Unknown = could not be checked (e.g. an earlier step failed). */
   unknown?: boolean;
+  /** "Fix automatically" (fixSharePointSetup) can repair this item. */
+  fixable?: boolean;
   detail?: string;
 }
 
@@ -124,8 +126,9 @@ export async function checkSetup(accessToken: string): Promise<SetupReport> {
         items.push({
           label: "Asset register columns",
           ok: missing.length === 0,
+          fixable: missing.length > 0,
           detail: missing.length
-            ? `Missing: ${missing.join(", ")}. Add them as "Single line of text" columns (see docs/DEPLOY.md).`
+            ? `Missing: ${missing.join(", ")}. Use "Fix automatically", or add them as "Single line of text" columns (docs/DEPLOY.md).`
             : undefined,
         });
       } catch (err: any) {
@@ -149,12 +152,13 @@ export async function checkSetup(accessToken: string): Promise<SetupReport> {
       } catch {
         /* list exists; columns unreadable — don't fail on it */
       }
-      items.push({ label: `List "${MS_CONFIG.CONFIRMATIONS_LIST_NAME}"`, ok, detail });
+      items.push({ label: `List "${MS_CONFIG.CONFIRMATIONS_LIST_NAME}"`, ok, fixable: !ok, detail });
     } catch {
       items.push({
         label: `List "${MS_CONFIG.CONFIRMATIONS_LIST_NAME}"`,
         ok: false,
-        detail: "Not found. Create it so users can confirm receipt (see docs/DEPLOY.md).",
+        fixable: true,
+        detail: "Not found. Use \"Fix automatically\" to create it, then set its permissions (docs/DEPLOY.md).",
       });
     }
   }
@@ -162,4 +166,86 @@ export async function checkSetup(accessToken: string): Promise<SetupReport> {
   items.push(...scopeItems(accessToken));
 
   return { ok: items.every((i) => i.ok), items, latencyMs: Date.now() - start };
+}
+
+/** Graph permission needed only by "Fix automatically" (creating columns and lists). */
+export const MANAGE_SCOPE = "Sites.Manage.All";
+
+export interface FixResult {
+  created: string[];
+  failed: { name: string; error: string }[];
+}
+
+async function graphPost(token: string, url: string, body: unknown): Promise<void> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    let message = "";
+    try {
+      message = JSON.parse(text)?.error?.message || "";
+    } catch {}
+    throw new Error(
+      res.status === 403
+        ? "Access denied: the signed-in admin must be a site owner and Sites.Manage.All must have admin consent."
+        : `HTTP ${res.status}${message ? `: ${message}` : ""}`,
+    );
+  }
+}
+
+/**
+ * One-click repair for the SharePoint side: adds the missing asset register
+ * columns (as "Single line of text") and creates the Asset Confirmations list
+ * with its columns. Only creates what is missing, so it is safe to run again.
+ * Needs a token with Sites.Manage.All (see AuthContext.getTokenForScopes).
+ */
+export async function fixSharePointSetup(manageToken: string): Promise<FixResult> {
+  const result: FixResult = { created: [], failed: [] };
+  const siteId = await resolveSiteId(manageToken);
+
+  const addColumns = async (listId: string, wanted: string[], label: string) => {
+    const missing = missingColumns(await listColumns(manageToken, siteId, listId), wanted);
+    for (const name of missing) {
+      try {
+        await graphPost(manageToken, `${GRAPH}/sites/${siteId}/lists/${listId}/columns`, {
+          name,
+          displayName: name,
+          text: {},
+        });
+        result.created.push(`${label}: column ${name}`);
+      } catch (err: any) {
+        result.failed.push({ name: `${label}: column ${name}`, error: err?.message || String(err) });
+      }
+    }
+  };
+
+  // Asset register (must already exist — it holds the data)
+  const registerId = await resolveListIdByName(manageToken, siteId, MS_CONFIG.LIST_NAME);
+  await addColumns(registerId, [...CORE_COLUMNS, ...OPTIONAL_COLUMNS], MS_CONFIG.LIST_NAME);
+
+  // Asset Confirmations
+  let confId: string | null = null;
+  try {
+    confId = await resolveListIdByName(manageToken, siteId, MS_CONFIG.CONFIRMATIONS_LIST_NAME);
+  } catch {
+    confId = null;
+  }
+  if (!confId) {
+    try {
+      await graphPost(manageToken, `${GRAPH}/sites/${siteId}/lists`, {
+        displayName: MS_CONFIG.CONFIRMATIONS_LIST_NAME,
+        columns: CONFIRMATION_COLUMNS.map((name) => ({ name, text: {} })),
+        list: { template: "genericList" },
+      });
+      result.created.push(`List "${MS_CONFIG.CONFIRMATIONS_LIST_NAME}"`);
+    } catch (err: any) {
+      result.failed.push({ name: `List "${MS_CONFIG.CONFIRMATIONS_LIST_NAME}"`, error: err?.message || String(err) });
+    }
+  } else {
+    await addColumns(confId, CONFIRMATION_COLUMNS, MS_CONFIG.CONFIRMATIONS_LIST_NAME);
+  }
+  return result;
 }

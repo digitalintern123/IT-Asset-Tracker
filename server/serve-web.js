@@ -207,6 +207,9 @@ const server = http.createServer(async (req, res) => {
         status: bundleOk ? "healthy" : "unhealthy",
         service: "encalm-asset-tracker",
         staticBundle: bundleOk ? "present" : "missing",
+        // Render sets RENDER_GIT_COMMIT: shows which release is running.
+        version: (process.env.RENDER_GIT_COMMIT || process.env.BUILD_SHA || "local").slice(0, 7),
+        uptimeSeconds: Math.round(process.uptime()),
         timestamp: Date.now(),
       });
       return;

@@ -16,9 +16,11 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AssetProvider } from "@/contexts/AssetContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { installGlobalErrorHandlers } from "@/lib/errorLog";
 import { rememberReturnTo, takeReturnTo } from "@/lib/navigation";
 
 SplashScreen.preventAutoHideAsync();
+installGlobalErrorHandlers();
 
 const queryClient = new QueryClient();
 

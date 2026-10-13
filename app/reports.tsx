@@ -25,16 +25,18 @@ import {
   ReportRow,
   filterRows,
   flattenEvents,
+  registerCsv,
+  registerJson,
   toCsv,
 } from "@/lib/reports";
 import type { AssetEventType, AssetStatus } from "@/types/asset";
 
 const EVENT_TYPES = Object.keys(EVENT_LABELS) as AssetEventType[];
 
-async function exportCsv(csv: string) {
-  const fileName = `encalm-asset-report-${new Date().toISOString().slice(0, 10)}.csv`;
+async function exportCsv(csv: string, baseName = "encalm-asset-report", ext = "csv", mime = "text/csv;charset=utf-8") {
+  const fileName = `${baseName}-${new Date().toISOString().slice(0, 10)}.${ext}`;
   if (Platform.OS === "web" && typeof document !== "undefined") {
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob([csv], { type: mime });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -161,6 +163,33 @@ export default function ReportsScreen() {
               >
                 <Download size={14} color="#FFFFFF" strokeWidth={2} />
                 <Text style={styles.exportText}>Download CSV</Text>
+              </Pressable>
+            </View>
+            <View style={[styles.headerRow, { justifyContent: "flex-start", flexWrap: "wrap" }]}>
+              <Text style={{ color: colors.mutedForeground, fontSize: 12, flexBasis: "100%" }}>
+                Backup (all {assets.length} devices) — keep a copy every month:
+              </Text>
+              <Pressable
+                onPress={() => exportCsv(registerCsv(assets), "encalm-asset-register")}
+                disabled={assets.length === 0}
+                style={({ pressed }) => [
+                  styles.exportBtn,
+                  { backgroundColor: colors.brandNavy, opacity: assets.length === 0 ? 0.5 : pressed ? 0.8 : 1 },
+                ]}
+              >
+                <Download size={14} color="#FFFFFF" strokeWidth={2} />
+                <Text style={styles.exportText}>Register (Excel)</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => exportCsv(registerJson(assets), "encalm-asset-backup", "json", "application/json")}
+                disabled={assets.length === 0}
+                style={({ pressed }) => [
+                  styles.exportBtn,
+                  { backgroundColor: colors.brandNavy, opacity: assets.length === 0 ? 0.5 : pressed ? 0.8 : 1 },
+                ]}
+              >
+                <Download size={14} color="#FFFFFF" strokeWidth={2} />
+                <Text style={styles.exportText}>Full backup (JSON)</Text>
               </Pressable>
             </View>
 

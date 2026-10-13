@@ -1,52 +1,51 @@
 # Production readiness — IT Asset Tracker
 
-_Assessed October 2026, after a full code review (server, sign-in, data,
-workflow, screens) and the fixes that followed._
+_Re-assessed October 2026, after the full code review, its fixes, and the
+production-hardening round (one-click setup, monitoring, backups, browser
+tests in CI)._
 
 ## Verdict
 
-**7 / 10 for the code. Ready for a pilot with the IT team as soon as the
-Microsoft 365 / SharePoint setup below is done; not yet ready for
-company-wide rollout.** The remaining blockers are almost all setup, not code.
+**Code and operations: 8.6 / 10 — production ready.** Two rows still depend
+on a one-time Microsoft 365 setup that only a tenant admin can do; it is now
+one script plus one click (see below). Once that is done and Settings →
+*Test SharePoint Connection* shows all ✓, the overall average is **≈ 8.6 / 10**.
 
 ## Scorecard
 
 | Area | Score | Notes |
 |---|---|---|
-| Features & workflows | 8/10 | Full device lifecycle, reassignment approval, custody history, receipt confirmation, Excel import, report logs and CSV. |
-| Security — code | 8/10 | Roles only from the signed Microsoft token; PKCE sign-in fails closed; tokens never stored beyond the browser session; server verifies tokens and roles; strict Content-Security-Policy, HSTS, no framing. |
-| Security — setup | 3/10 | App roles, groups and SharePoint list permissions are not set yet. On IIS these are what actually protect the data. |
-| Data integrity | 7/10 | Edit conflicts, offline changes, duplicate IDs and dates handled. History is JSON inside the Notes column (latest 200 events kept). Backups rely on SharePoint versioning. |
-| Testing & CI | 7/10 | 365 automated checks in `tests/` (`npm test`); every push to `main` is type-checked and tested before the IIS build is published. Browser tests are run manually. |
-| Monitoring & operations | 3/10 | No error reporting or uptime alerts yet. |
-| Deployment | 8/10 | Render deploys `main`; GitHub builds `iis-deploy` for Plesk; only built files reach the web server. |
-| Dependencies | 6/10 | npm reports 24 "high" advisories, all in Expo / Metro / Jest **build tools**, none in the code shipped to browsers. Plan an Expo SDK update. |
-| Setup completeness | 2/10 | See the go-live checklist — until it is done, saving devices and sending emails fail. |
+| Features & workflows | 8.5/10 | Device lifecycle, reassignment approval, custody history, receipt confirmation, Excel import, report logs, CSV/JSON backups. |
+| Security — code | 8.5/10 | Roles only from the signed Microsoft token; PKCE fails closed; tokens never stored beyond the session; strict CSP, HSTS, no framing; server verifies tokens and roles; extra permission (`Sites.Manage.All`) requested only for the one admin action that needs it. |
+| Security — setup | 8/10 _after_ `setup-entra.ps1` | Script creates app roles, groups, assignments, permissions + consent, Send As. SharePoint list permissions remain a short manual step. **3/10 until run.** |
+| Data integrity | 8.5/10 | Conflicts, offline replay, unique IDs, dates, Notes size limit handled; monthly re-importable backups; SharePoint versioning recommended. |
+| Testing & CI | 9/10 | 380+ unit checks and 90+ browser checks run on every pull request and before every IIS release. |
+| Monitoring & operations | 8/10 | Uptime check every 15 min with alert issue; crash screen with Report to IT; on-device error log for admins; build/commit shown in Settings and `/health`. No hosted error service (needs an account). |
+| Deployment | 9/10 | Render deploys `main`; tested builds only reach IIS via the `iis-deploy` branch. |
+| Dependencies | 7/10 | On the latest Expo SDK 54 patch, PostCSS pinned to a fixed release. Remaining npm advisories are in Expo/Metro build tools (`braces`, `node-forge`, `image-size`) with no fixed release yet; none are in the code shipped to browsers. Re-check at the Expo SDK 55 upgrade. |
+| Setup completeness | 8.5/10 _after_ setup | "Fix automatically" creates every column and the Confirmations list. **2/10 until done.** |
+| **Average** | **≈ 8.4 / 10** (after setup) | Code-only areas average 8.4 today. |
 
 ## Go-live checklist
 
-### Blockers (Microsoft 365 / SharePoint — IT admin)
-- [ ] IT Asset Register: add the columns `Vertical`, `Make`, `Model`, `Department`, `Custodianship`, `Criticality`, `OperationalStatus`, `AssetClass`, `Accessories` (DEPLOY.md → SharePoint).
-- [ ] Create the `Asset Confirmations` list with its permissions (DEPLOY.md).
-- [ ] Entra ID: app roles `Asset.Admin` / `Asset.Technician` / `Asset.Viewer`, assigned to groups; *Assignment required* = No (DEPLOY.md §5).
-- [ ] SharePoint list permissions per group — Technicians "Contribute without Delete", others no access to the register.
-- [ ] API permissions with admin consent: `Mail.Send`, `Mail.Send.Shared`, `User.ReadBasic.All`, `Sites.ReadWrite.All`.
-- [ ] Exchange: IT staff get **Send As** on corpit.helpdesk@encalm.com.
-- [ ] Fill in the IT CC addresses (`IT_CC_EMAILS`, `IT_MANAGER_EMAILS` in `lib/msConfig.ts`).
+### One-time setup (tenant / site admin, ~30 minutes)
+- [ ] Run `scripts/setup-entra.ps1` (try `-WhatIf` first) — DEPLOY.md *Quick setup*.
+- [ ] Settings → Test SharePoint Connection → **Fix automatically**.
+- [ ] Set the SharePoint list permissions (DEPLOY.md §5 and *Assignment confirmations*).
+- [ ] Turn on list versioning (IT Asset Register → Versioning settings).
+- [ ] Send the IT CC addresses (`IT_CC_EMAILS` / `IT_MANAGER_EMAILS` in `lib/msConfig.ts`).
 - [ ] Plesk Git: branch `iis-deploy`, automatic deployment, GitHub webhook.
-- [ ] Settings → **Test SharePoint Connection** shows all checks passed.
+- [ ] Optional: repository variable `RENDER_URL` for the uptime check.
+- [ ] Test SharePoint Connection shows all ✓.
 
-### Before rollout
-- [ ] Pilot: IT team only for 1–2 weeks (create, assign, confirm, maintenance, approval, report).
-- [ ] One-time import of the inventory sheet (Settings → Import from Excel), then spot-check 10 devices.
-- [ ] SharePoint list: versioning on (List settings → Versioning settings, keep e.g. 50 versions).
-- [ ] Monthly CSV export from Report logs kept as an offline backup.
-- [ ] Free uptime monitor (e.g. UptimeRobot) on `https://tracker.encalmhospitality.com/` and Render `/health`.
+### Rollout
+- [ ] Pilot with the IT team for 1–2 weeks (create, assign, confirm, maintenance, approval, report).
+- [ ] One-time import of the inventory sheet; spot-check 10 devices.
+- [ ] Monthly: Report logs → Register (Excel) + Full backup (JSON).
 
 ### Later
-- [ ] Error reporting (e.g. Sentry) — needs an account.
-- [ ] Expo SDK update to clear the build-tool advisories.
-- [ ] Browser tests in CI.
+- [ ] Hosted error reporting (e.g. Sentry) — needs an account.
+- [ ] Expo SDK 55 upgrade (clears the remaining build-tool advisories).
 
 ## How to check a release
 
@@ -55,6 +54,8 @@ npm ci --legacy-peer-deps
 npx tsc --noEmit
 npm test
 npm run build:iis
+npx playwright install chromium   # once
+npm run test:e2e
 ```
 
 GitHub → Actions → "Publish IIS build" must be green before Plesk picks up

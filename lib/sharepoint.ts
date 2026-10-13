@@ -147,6 +147,8 @@ export function fromSpItem(item: any): Asset {
 }
 
 const MAX_STORED_EVENTS = 200;
+// Below SharePoint's 63,999-character limit for a multi-line text column.
+const MAX_NOTES_CHARS = 63000;
 
 export const OPTIONAL_COLUMNS = [
   "Vertical",
@@ -232,8 +234,15 @@ export function toSpFields(input: AssetInput, assetId?: string): Record<string, 
   }
   if (Array.isArray(input.events) && input.events.length > 0) {
     // Keep the newest events so the Notes field stays within SharePoint's limit.
-    const recent = input.events.slice(-MAX_STORED_EVENTS);
-    notesWithHistory = `${notesWithHistory}\n<!-- EVENTS:${toNotesJson(recent)} -->`.trim();
+    // SharePoint's Notes column holds at most 63,999 characters: drop the
+    // oldest audit events (never custody history) until everything fits.
+    let recent = input.events.slice(-MAX_STORED_EVENTS);
+    let block = `\n<!-- EVENTS:${toNotesJson(recent)} -->`;
+    while (recent.length > 0 && notesWithHistory.length + block.length > MAX_NOTES_CHARS) {
+      recent = recent.slice(Math.max(1, Math.ceil(recent.length / 10)));
+      block = recent.length ? `\n<!-- EVENTS:${toNotesJson(recent)} -->` : "";
+    }
+    notesWithHistory = `${notesWithHistory}${block}`.trim();
   }
 
   const fields: Record<string, unknown> = {

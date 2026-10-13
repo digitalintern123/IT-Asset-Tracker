@@ -160,3 +160,82 @@ export function toCsv(rows: ReportRow[]): string {
   // BOM so Excel opens UTF-8 (e.g. the → arrow) correctly.
   return "﻿" + lines.join("\r\n");
 }
+
+/**
+ * Full register backup in the inventory-sheet layout, so the file can be
+ * re-imported with Settings → Import from Excel (after saving it as .xlsx).
+ */
+export function registerCsv(assets: Asset[]): string {
+  const header = [
+    "S No",
+    "COMPUTER NAME / NUMBER",
+    "COMPUTER MAKE",
+    "COMPUTER MODEL",
+    "DEVICE_SERIAL NUMBER (service tag)",
+    "LOCATION",
+    "USED IN LOCATION",
+    "DEPARTMENT",
+    "USER NAME",
+    "User Email ID",
+    "City",
+    "Remark and update",
+    "Asset Custodianship",
+    "Criticality of asset /Asset Valuation",
+    "Status (Operational/Non Operational)",
+    "Asset Categorisation (Hardware/Software/Service)",
+    "Accessories",
+    "Vertical",
+    "Asset ID",
+    "Category",
+    "Status",
+    "Purchase date",
+    "Purchase price",
+    "Warranty expiry",
+  ];
+  const lines = [header.map(csvCell).join(",")];
+  assets.forEach((a, i) => {
+    const [site, ...rest] = String(a.location || "").split(" — ");
+    const holder = [...(a.assignmentHistory || [])].reverse().find((r) => !r.returnedAt);
+    lines.push(
+      [
+        String(i + 1),
+        a.name,
+        a.make,
+        a.model,
+        a.serialNumber,
+        site,
+        rest.join(" — "),
+        a.department,
+        a.assignee,
+        holder?.assigneeEmail,
+        "",
+        a.notes,
+        a.custodianship,
+        a.criticality,
+        a.operationalStatus,
+        a.assetClass,
+        a.accessories,
+        a.vertical,
+        a.id,
+        a.category,
+        STATUS_LABELS[a.status] ?? a.status,
+        a.purchaseDate,
+        a.purchasePrice ? String(a.purchasePrice) : "",
+        a.warrantyExpiry,
+      ]
+        .map((v) => csvCell(String(v ?? "")))
+        .join(","),
+    );
+  });
+  return "\uFEFF" + lines.join("\r\n");
+}
+
+/** Complete backup including custody history and audit events. */
+export function registerJson(assets: Asset[]): string {
+  const strip = ({ _syncStatus, etag, ...rest }: Asset) => rest;
+  return JSON.stringify(
+    { exportedAt: new Date().toISOString(), count: assets.length, assets: assets.map(strip) },
+    null,
+    2,
+  );
+}

@@ -1,5 +1,6 @@
 import { AlertCircle, X } from "@/components/LucideIcon";
 import { reloadAppAsync } from "expo";
+import { emailErrorReport, getErrorLog } from "@/lib/errorLog";
 import React, { useState } from "react";
 import {
   Modal,
@@ -122,6 +123,14 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
             Try Again
           </Text>
         </Pressable>
+
+        <Pressable
+          onPress={() => emailErrorReport(getErrorLog(), `Screen error: ${error?.message || ""}`)}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.reportButton, { borderColor: colors.border, opacity: pressed ? 0.7 : 1 }]}
+        >
+          <Text style={[styles.reportText, { color: colors.foreground }]}>Report to IT</Text>
+        </Pressable>
       </View>
 
       <Modal
@@ -195,6 +204,15 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
 }
 
 const styles = StyleSheet.create({
+  reportButton: {
+    marginTop: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: "center",
+  },
+  reportText: { fontSize: 15, fontWeight: "600" },
   container: {
     flex: 1,
     width: "100%",

@@ -30,6 +30,7 @@ import {
 } from "@/lib/assetWorkflow";
 import { applyConfirmations, confirmLink, fetchConfirmations } from "@/lib/confirmations";
 import { resolveAssetConflict } from "@/lib/conflictResolver";
+import { recordError } from "@/lib/errorLog";
 import {
   MailMessage,
   buildAssignmentConfirmMail,
@@ -268,6 +269,10 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
   const [loaded, setLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  // Keep sync/save problems in the on-device log (Settings → Diagnostics).
+  useEffect(() => {
+    if (syncError) recordError("sync", syncError);
+  }, [syncError]);
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [isOffline, setIsOffline] = useState(!isNetworkOnline());
   const { user, getValidAccessToken } = useAuth();

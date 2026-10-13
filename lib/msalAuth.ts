@@ -208,12 +208,12 @@ export async function exchangeCodeForTokens(
 /**
  * Silently refresh tokens using OAuth refresh_token grant.
  */
-export async function silentRefreshToken(refreshToken: string): Promise<MsTokens> {
+export async function silentRefreshToken(refreshToken: string, scopes?: string[]): Promise<MsTokens> {
   const bodyParams = new URLSearchParams({
     client_id: MS_CONFIG.CLIENT_ID,
     grant_type: "refresh_token",
     refresh_token: refreshToken,
-    scope: MS_CONFIG.SCOPES.join(" "),
+    scope: (scopes || MS_CONFIG.SCOPES).join(" "),
   });
 
   // 1. Direct browser fetch
@@ -239,6 +239,8 @@ export async function silentRefreshToken(refreshToken: string): Promise<MsTokens
   } catch (err) {
     console.warn("Direct refresh failed, trying backend fallback:", err);
   }
+  // Extra-scope requests (e.g. one-click setup) only go direct.
+  if (scopes) throw new Error("Microsoft did not issue a token for the requested permission.");
 
   // 2. Backend proxy fallback
   const backendBase = typeof window !== "undefined" ? window.location.origin : "";

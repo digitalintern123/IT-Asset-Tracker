@@ -1,0 +1,67 @@
+# Free uptime monitor: every 15 minutes, check the live site (and Render, if
+# the RENDER_URL repository variable is set). When a check fails, this run
+# fails (GitHub emails the repository owner) and a "Site down" issue is opened
+# or updated; it is closed automatically when the site is back.
+name: Uptime check
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SITE_URL: ${{ vars.SITE_URL || 'https://tracker.encalmhospitality.com' }}
+      RENDER_URL: ${{ vars.RENDER_URL }}
+    steps:
+      - name: Check sites
+        id: check
+        run: |
+          problems=""
+          check() {
+            local name="$1" url="$2" expect="$3"
+            body=$(curl -sS -L --max-time 20 --retry 2 --retry-delay 10 -w '\n%{http_code}' "$url" 2>&1) || true
+            code=$(printf '%s' "$body" | tail -n1)
+            if [ "$code" != "200" ] || ! printf '%s' "$body" | grep -q "$expect"; then
+              problems="$problems\n- **$name** ($url): HTTP $code"
+            else
+              echo "$name OK ($url)"
+            fi
+          }
+          check "IIS site" "$SITE_URL/" "_expo/static/js/web"
+          if [ -n "$RENDER_URL" ]; then check "Render" "$RENDER_URL/health" '"healthy"'; fi
+          if [ -n "$problems" ]; then
+            printf "problems<<EOF\n$problems\nEOF\n" >> "$GITHUB_OUTPUT"
+            printf "Down:$problems\n"
+          fi
+
+      - name: Open or update the "Site down" issue
+        if: steps.check.outputs.problems != ''
+        uses: actions/github-script@v7
+        env:
+          PROBLEMS: ${{ steps.check.outputs.problems }}
+        with:
+          script: |
+            const title = "Site down (uptime check)";
+            const { data: open } = await github.rest.issues.listForRepo({ ...context.repo, state: "open", labels: "uptime" });
+            const body = `Checked ${new Date().toISOString()}\n${process.env.PROBLEMS}\n\n[Run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`;
+            if (open.length) await github.rest.issues.createComment({ ...context.repo, issue_number: open[0].number, body });
+            else await github.rest.issues.create({ ...context.repo, title, body, labels: ["uptime"] });
+            core.setFailed("Site down");
+
+      - name: Close the "Site down" issue when back up
+        if: steps.check.outputs.problems == ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: open } = await github.rest.issues.listForRepo({ ...context.repo, state: "open", labels: "uptime" });
+            for (const issue of open) {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: issue.number, body: `Back up at ${new Date().toISOString()}.` });
+              await github.rest.issues.update({ ...context.repo, issue_number: issue.number, state: "closed" });
+            }
