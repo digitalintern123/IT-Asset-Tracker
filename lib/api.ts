@@ -38,9 +38,14 @@ async function getAuthHeaders(token?: string): Promise<Record<string, string>> {
  * (and the current server record on a 409/412 conflict).
  */
 async function toHttpError(res: Response, fallbackMessage: string): Promise<Error> {
-  const errBody = await res.json().catch(() => ({} as any));
+  // Only the Node backend answers /api with JSON. Anything else (e.g. IIS's
+  // static handler: 404, 405, or 406 for "Accept: application/json") means
+  // there is no backend here.
+  const fromBackend = (res.headers?.get?.("content-type") || "").includes("application/json");
+  const errBody = fromBackend ? await res.json().catch(() => ({} as any)) : ({} as any);
   const httpErr: any = new Error(errBody.error || fallbackMessage);
   httpErr.statusCode = res.status;
+  httpErr.fromBackend = fromBackend;
   if (res.status === 412 || res.status === 409) {
     httpErr.statusCode = 412;
     httpErr.serverAsset = errBody.data ?? null;
@@ -52,12 +57,12 @@ async function toHttpError(res: Response, fallbackMessage: string): Promise<Erro
  * True when the backend answered and refused the request (auth, role,
  * validation, conflict). Those must surface to the user: retrying them
  * directly against Graph would bypass the backend's role gate.
- * 404/405 mean the endpoint is not there (e.g. IIS serves static files only),
- * so the direct-Graph fallback still applies.
+ * A non-JSON 4xx (IIS serving static files only: 404/405/406) means there is
+ * no backend, so the direct-Graph fallback still applies.
  */
 function isBackendRejection(err: any): boolean {
   const status = Number(err?.statusCode ?? 0);
-  return status >= 400 && status < 500 && status !== 404 && status !== 405;
+  return !!err?.fromBackend && status >= 400 && status < 500 && status !== 404 && status !== 405;
 }
 
 export async function apiFetchAll(token?: string): Promise<Asset[]> {
