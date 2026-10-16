@@ -15,7 +15,7 @@ const api = loadTs("lib/api.ts", {
   "./secureStorage": { getSecureTokens: async () => ({ idToken: "idt" }) },
   "./sharepoint": { createSharePointService: async () => sp },
 });
-const json = (status, body) => async () => ({ ok: status >= 200 && status < 300, status, json: async () => body });
+const json = (status, body) => async () => ({ ok: status >= 200 && status < 300, status, headers: { get: (h) => (h.toLowerCase() === "content-type" ? "application/json; charset=utf-8" : null) }, json: async () => body });
 const html200 = async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError("Unexpected token <"); } });
 const netErr = async () => { throw new TypeError("Failed to fetch"); };
 const calls = {
