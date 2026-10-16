@@ -51,6 +51,9 @@ function roleFromIdToken(email: string, idToken?: string) {
     role,
     permissions: getPermissionsForRole(role),
     roleSource: roleSource(email, tokenRoles),
+    // Raw app roles Microsoft put in the sign-in token (shown in Settings to
+    // diagnose role setup; not used for any decision).
+    tokenRoles,
   };
 }
 
@@ -69,6 +72,8 @@ export interface AuthUser {
   isDemo?: boolean;
   /** Where the role came from (shown in Settings). */
   roleSource?: string;
+  /** App roles exactly as received in the id_token (diagnostics only). */
+  tokenRoles?: string[];
 }
 
 interface AuthContextValue {

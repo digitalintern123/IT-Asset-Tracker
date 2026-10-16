@@ -472,6 +472,9 @@ export default function SettingsScreen() {
             sublabel={
               `${ROLE_DESCRIPTIONS[user.role || "viewer"]}` +
               (user.roleSource ? `\nFrom: ${user.roleSource}` : "") +
+              (user.isDemo
+                ? ""
+                : `\nRoles in your Microsoft sign-in: ${user.tokenRoles?.length ? user.tokenRoles.join(", ") : "none"}`) +
               (user.isDemo ? "" : "\nRole changes in Entra ID apply at your next sign-in or within the hour.")
             }
             colors={colors}
