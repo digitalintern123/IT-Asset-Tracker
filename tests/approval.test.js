@@ -22,7 +22,9 @@ ok("approval link", link === "https://tracker.encalmhospitality.com/approve?asse
 ok("batch link", M.approvalLink("https://t", { batchId: "imp_x" }, "reject") === "https://t/approve?batch=imp_x&decision=reject");
 
 const m = M.buildReassignRequestMail(asset, req, "https://t");
+const b2 = M.buildImportApprovalMail("imp_0", [{ name: "x", id: "y", assignee: "z" }], { name: "IT" }, "https://t");
 ok("goes to the approvers (APPROVAL_EMAILS)", JSON.stringify(m.to) === JSON.stringify(C.MS_CONFIG.APPROVAL_EMAILS.map((e) => e.trim())), JSON.stringify(m.to));
+ok("approval emails go to Prasenjit (Head of IT)", JSON.stringify(m.to) === JSON.stringify(["prasenjit.baidya@encalm.com"]) && JSON.stringify(b2.to) === JSON.stringify(["prasenjit.baidya@encalm.com"]));
 ok("subject names device and new user", m.subject === "[Approval required] Hand over DEL-EATS-NB005 to Priya", m.subject);
 ok("HTML has Approve and Reject buttons to the approval page", m.html.includes("https://t/approve?asset=ENC-LAP-2026-0001&amp;request=appr_1&amp;decision=approve") && m.html.includes("decision=reject") && m.html.includes(">Approve<") && m.html.includes(">Reject<"));
 ok("shows current holder and new user", m.html.includes("Rahul") && m.html.includes("Priya (priya@encalm.com)"));

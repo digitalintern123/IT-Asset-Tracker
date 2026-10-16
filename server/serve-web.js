@@ -18,7 +18,7 @@ const port = Number.parseInt(process.env.PORT || "10000", 10);
 
 // Must stay in sync with MS_CONFIG.ADMIN_EMAILS in lib/msConfig.ts.
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ||
-  "digital.intern@encalm.com,admin@encalmhospitality.com,it@encalmhospitality.com")
+  "encalmit@encalm.com")
   .split(",")
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);

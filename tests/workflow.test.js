@@ -65,7 +65,7 @@ ok("approved reassign: Rahul returned, Priya assigned with approver", r.events.m
 ok("custody: old closed, new open with approvedBy", asset.assignmentHistory.length === 2 && !!asset.assignmentHistory[0].returnedAt && !asset.assignmentHistory[1].returnedAt && asset.assignmentHistory[1].approvedBy === "Admin Anu");
 r = apply({ ...wf.toAssetInput(asset), status: "maintenance", notes: "Screen flicker" }, { by: "Tech Tina" });
 ok("maintenance: status event with reason, custody stays open", r.events.length === 1 && r.events[0].toStatus === "maintenance" && r.events[0].notes === "Screen flicker" && !asset.assignmentHistory[1].returnedAt);
-ok("maintenance mail goes to user + IT manager", (() => { const m = mail.buildMaintenanceMail(asset, "Screen flicker", "Tech Tina"); return m.to.includes("priya@encalm.com") && m.to.includes("it@encalmhospitality.com") && m.body.includes("Screen flicker"); })());
+ok("maintenance mail goes to user + IT manager", (() => { const m = mail.buildMaintenanceMail(asset, "Screen flicker", "Tech Tina"); return m.to.includes("priya@encalm.com") && m.to.includes("encalmit@encalm.com") && m.body.includes("Screen flicker"); })());
 r = apply({ ...wf.toAssetInput(asset), status: "retired", notes: "Water damage" }, { by: "Admin Anu" });
 ok("out of order: custody closed, returned + status events", r.events.map((e) => e.type).join() === "returned,status_changed" && asset.assignmentHistory.every((h) => h.returnedAt));
 ok("full trail recorded", asset.events.length === 8, asset.events.map((e) => e.type).join());

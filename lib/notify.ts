@@ -53,7 +53,7 @@ export async function openApprovalRequestEmail(
   reason: string,
   adminEmails: string[],
 ): Promise<boolean> {
-  const primaryAdmin = adminEmails[0] || "admin@encalmhospitality.com";
+  const primaryAdmin = adminEmails[0] || "encalmit@encalm.com";
   const ccList = adminEmails.slice(1).join(",");
   const actionLabel = action.toUpperCase();
 

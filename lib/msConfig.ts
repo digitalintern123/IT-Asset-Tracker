@@ -38,11 +38,7 @@ export const MS_CONFIG = {
   // Configured Enterprise IT Administrators (fallback if Entra ID App Roles not assigned)
   // Must stay in sync with the ADMIN_EMAILS environment variable on the server
   // (server/serve-web.js), which enforces the same list on /api/assets.
-  ADMIN_EMAILS: [
-    "digital.intern@encalm.com",
-    "admin@encalmhospitality.com",
-    "it@encalmhospitality.com",
-  ],
+  ADMIN_EMAILS: ["encalmit@encalm.com"],
 
   // Hand-over confirmation emails are sent as this shared mailbox
   // (needs Mail.Send.Shared + Exchange "Send As" for IT staff).
@@ -59,10 +55,10 @@ export const MS_CONFIG = {
   // hand-over (assign / reassign / import). They approve by signing in, and
   // must be IT Asset Admins (Asset.Admin role) — anyone else is refused.
   // Put the Head of IT (and deputies) here.
-  APPROVAL_EMAILS: ["encalmit@encalm.com"],
+  APPROVAL_EMAILS: ["prasenjit.baidya@encalm.com"],
 
   // Receive maintenance notices (with the device's user).
-  IT_MANAGER_EMAILS: ["it@encalmhospitality.com"],
+  IT_MANAGER_EMAILS: ["encalmit@encalm.com"],
 } as const;
 
 export type MsConfig = typeof MS_CONFIG;

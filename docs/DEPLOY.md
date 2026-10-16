@@ -95,7 +95,7 @@ Environment variables read by the server:
 | `AZURE_CLIENT_SECRET` | *(unset)* | Optional. When set, the server uses an app-only Graph token for SharePoint calls. Only set it with the id_token role gate in place. |
 | `SHAREPOINT_SITE_URL` | `https://encalmit.sharepoint.com` | SharePoint site |
 | `SHAREPOINT_LIST_NAME` | `IT Asset Register` | SharePoint list |
-| `ADMIN_EMAILS` | the three built-in admins | Comma-separated. Must match `MS_CONFIG.ADMIN_EMAILS` in `lib/msConfig.ts`. |
+| `ADMIN_EMAILS` | `encalmit@encalm.com` | Comma-separated. Must match `MS_CONFIG.ADMIN_EMAILS` in `lib/msConfig.ts`. |
 
 Health check: `GET /health` returns `200 {"status":"healthy"}` only when
 `web-build/index.html` exists, and `503` otherwise, so a deploy without a
