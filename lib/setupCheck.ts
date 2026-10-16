@@ -83,13 +83,35 @@ export function scopeItems(accessToken?: string): SetupItem[] {
 }
 
 /** Internal names of the list's columns. */
-async function listColumns(token: string, siteId: string, listId: string): Promise<Set<string>> {
-  const res = await fetch(`${GRAPH}/sites/${siteId}/lists/${listId}/columns?$select=name,displayName`, {
+async function listColumnDefs(token: string, siteId: string, listId: string): Promise<any[]> {
+  const res = await fetch(`${GRAPH}/sites/${siteId}/lists/${listId}/columns?$select=name,displayName,text`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status} reading the list's columns`);
   const data = await res.json();
-  return new Set((data.value || []).map((c: any) => String(c.name)));
+  return data.value || [];
+}
+
+async function listColumns(token: string, siteId: string, listId: string): Promise<Set<string>> {
+  return new Set((await listColumnDefs(token, siteId, listId)).map((c: any) => String(c.name)));
+}
+
+/**
+ * Column type to create for each app field. Notes holds the custody history
+ * and audit log, so it must be multi-line (a single-line column stops at 255
+ * characters); price is a number and the dates are date-only.
+ */
+export function columnDefinition(name: string): Record<string, unknown> {
+  if (name === "Notes") return { name, text: { allowMultipleLines: true, textType: "plain", linesForEditing: 6 } };
+  if (name === "PurchasePrice") return { name, number: {} };
+  if (name === "PurchaseDate" || name === "WarrantyExpiry") return { name, dateTime: { format: "dateOnly" } };
+  return { name, text: {} };
+}
+
+/** True when the list's Notes column is explicitly single-line (255 chars). */
+export function notesTooShort(columns: any[]): boolean {
+  const notes = columns.find((c) => c?.name === "Notes");
+  return !!notes?.text && notes.text.allowMultipleLines === false;
 }
 
 export function missingColumns(have: Set<string>, wanted: string[]): string[] {
@@ -121,8 +143,17 @@ export async function checkSetup(accessToken: string): Promise<SetupReport> {
         detail: read.ok ? undefined : `HTTP ${read.status} reading items — check the account's access to this list.`,
       });
       try {
-        const have = await listColumns(accessToken, siteId, listId);
+        const defs = await listColumnDefs(accessToken, siteId, listId);
+        const have = new Set(defs.map((c: any) => String(c.name)));
         const missing = missingColumns(have, [...CORE_COLUMNS, ...OPTIONAL_COLUMNS]);
+        if (notesTooShort(defs)) {
+          items.push({
+            label: "Notes column type",
+            ok: false,
+            detail:
+              'Notes is "Single line of text" (255 characters) — it stores the custody history. Change it: List settings → Notes → "Multiple lines of text", Plain text.',
+          });
+        }
         items.push({
           label: "Asset register columns",
           ok: missing.length === 0,
@@ -211,9 +242,8 @@ export async function fixSharePointSetup(manageToken: string): Promise<FixResult
     for (const name of missing) {
       try {
         await graphPost(manageToken, `${GRAPH}/sites/${siteId}/lists/${listId}/columns`, {
-          name,
+          ...columnDefinition(name),
           displayName: name,
-          text: {},
         });
         result.created.push(`${label}: column ${name}`);
       } catch (err: any) {

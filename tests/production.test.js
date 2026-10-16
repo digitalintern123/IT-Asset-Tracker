@@ -97,5 +97,14 @@ function mockGraph(state) {
   mockGraph(denied);
   res = await SC.fixSharePointSetup("tok");
   ok("403 explains the permission needed", res.failed.length > 0 && res.failed.every((f) => /Sites\.Manage\.All/.test(f.error)), res.failed[0] && res.failed[0].error);
+  // Column types for creation + short Notes detection
+  ok("Notes created multi-line plain text", JSON.stringify(SC.columnDefinition("Notes").text) === JSON.stringify({ allowMultipleLines: true, textType: "plain", linesForEditing: 6 }));
+  ok("price is a number, dates are date-only, others text", SC.columnDefinition("PurchasePrice").number && SC.columnDefinition("WarrantyExpiry").dateTime.format === "dateOnly" && SC.columnDefinition("Department").text);
+  ok("single-line Notes is flagged", SC.notesTooShort([{ name: "Notes", text: { allowMultipleLines: false } }]) && !SC.notesTooShort([{ name: "Notes", text: { allowMultipleLines: true } }]) && !SC.notesTooShort([{ name: "Notes" }]));
+  const typed = { regCols: REG_COLS.filter((c) => c !== "Notes" && c !== "PurchasePrice"), confExists: true, confCols: ["CustodyId", "AssetName", "ConfirmedAt"] };
+  posts = mockGraph(typed);
+  await SC.fixSharePointSetup("tok");
+  const notesPost = posts.find((p) => p.body.name === "Notes"), pricePost = posts.find((p) => p.body.name === "PurchasePrice");
+  ok("fix creates Notes multi-line and PurchasePrice as number", notesPost && notesPost.body.text.allowMultipleLines === true && pricePost && pricePost.body.number);
   console.log(fail ? `${fail} FAILED` : "ALL PASS"); process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });
