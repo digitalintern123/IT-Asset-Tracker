@@ -268,29 +268,130 @@ export function buildMaintenanceMail(asset: Asset, reason: string, by: string): 
   };
 }
 
-export function buildReassignRequestMail(asset: Asset, req: ApprovalRequest): MailMessage {
+/** Link to the approval page for one request (or a whole import batch). */
+export function approvalLink(
+  origin: string,
+  target: { assetId: string; requestId: string } | { batchId: string },
+  decision?: "approve" | "reject",
+): string {
+  const base = origin.replace(/\/+$/, "");
+  const q =
+    "batchId" in target
+      ? `batch=${encodeURIComponent(target.batchId)}`
+      : `asset=${encodeURIComponent(target.assetId)}&request=${encodeURIComponent(target.requestId)}`;
+  return `${base}/approve?${q}${decision ? `&decision=${decision}` : ""}`;
+}
+
+function approvalButtons(approveUrl: string, rejectUrl: string): string {
+  const btn = (bg: string) =>
+    `display:inline-block;background:${bg};color:#fff;text-decoration:none;padding:10px 22px;border-radius:6px;font-weight:600;margin-right:10px;`;
+  return (
+    `<p><a href="${escapeHtml(approveUrl)}" style="${btn("#2E7D32")}">Approve</a>` +
+    `<a href="${escapeHtml(rejectUrl)}" style="${btn("#C62828")}">Reject</a></p>` +
+    `<p style="font-size:12px;color:#555;">You will be asked to sign in with your Encalm Microsoft 365 account to confirm. Only IT Asset Admins can approve.</p>`
+  );
+}
+
+/**
+ * Approval matrix: every hand-over waits for an IT Asset Admin. Sent to the
+ * admins (ADMIN_EMAILS); Approve / Reject open the tracker's approval page.
+ */
+export function buildReassignRequestMail(asset: Asset, req: ApprovalRequest, origin = ""): MailMessage {
   const pending = req.pendingChanges || {};
+  const target = { assetId: asset.id, requestId: req.id };
+  const approveUrl = approvalLink(origin, target, "approve");
+  const rejectUrl = approvalLink(origin, target, "reject");
+  const from = currentHolderName(asset);
+  const to = `${pending.assignee || "—"}${pending.assigneeEmail ? ` (${pending.assigneeEmail})` : ""}`;
+  const rows: [string, string][] = [
+    ["Device", `${asset.name} (${asset.id})`],
+    ["Make / Model", [asset.make, asset.model].filter(Boolean).join(" ") || "—"],
+    ["Serial No.", asset.serialNumber || "—"],
+    ["Hand over to", to],
+    ["Currently with", from || "Nobody (in IT stock)"],
+    ["Location", pending.location || asset.location || "—"],
+    ["Requested by", `${req.requesterName}${req.requesterEmail ? ` (${req.requesterEmail})` : ""}`],
+    ["Reason", req.reason || "—"],
+  ];
+  const cell = "border:1px solid #ccc;padding:6px 10px;font-family:Segoe UI,Arial,sans-serif;font-size:14px;";
+  const html = [
+    `<div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#000;">`,
+    `<p>Dear IT Head,</p>`,
+    `<p>Please approve the hand-over of this device. It will only be handed over (and the user asked to confirm receipt) after approval.</p>`,
+    `<table style="border-collapse:collapse;margin:12px 0;">`,
+    rows.map(([k, v]) => `<tr><td style="${cell}font-weight:600;">${escapeHtml(k)}</td><td style="${cell}">${escapeHtml(v)}</td></tr>`).join(""),
+    `</table>`,
+    approvalButtons(approveUrl, rejectUrl),
+    `<p>Encalm IT Asset Management System</p>`,
+    `</div>`,
+  ].join("");
   return {
-    to: cleanRecipients([...MS_CONFIG.ADMIN_EMAILS]),
-    subject: `[Approval required] Reassign ${asset.name} (${asset.id})`,
+    to: cleanRecipients([...MS_CONFIG.APPROVAL_EMAILS]),
+    subject: `[Approval required] Hand over ${asset.name} to ${pending.assignee || "—"}`,
     body: [
-      `Dear IT Administrator,`,
+      `Dear IT Head,`,
       "",
-      `${req.requesterName} has requested to reassign an in-use device:`,
+      `Please approve the hand-over of this device:`,
       "",
-      ...deviceLines(asset),
-      `• Current user: ${asset.assignee || "None"}`,
-      `• New user: ${pending.assignee || "—"}${pending.assigneeEmail ? ` (${pending.assigneeEmail})` : ""}`,
-      `• New location: ${pending.location || asset.location || "—"}`,
+      ...rows.map(([k, v]) => `• ${k}: ${v}`),
       "",
-      `Reason: ${req.reason || "—"}`,
-      `Requested by: ${req.requesterName} (${req.requesterEmail}) on ${new Date(req.requestedAt).toLocaleString()}`,
-      "",
-      `Please open the Encalm Asset Tracker to approve or reject this request.`,
+      `Approve: ${approveUrl}`,
+      `Reject: ${rejectUrl}`,
       "",
       `Encalm IT Asset Management System`,
     ].join("\n"),
+    html,
   };
+}
+
+/** One approval for a whole one-time import batch. */
+export function buildImportApprovalMail(
+  batchId: string,
+  devices: { name: string; id: string; assignee: string }[],
+  requester: { name: string; email?: string },
+  origin = "",
+): MailMessage {
+  const approveUrl = approvalLink(origin, { batchId }, "approve");
+  const rejectUrl = approvalLink(origin, { batchId }, "reject");
+  const shown = devices.slice(0, 50);
+  const more = devices.length - shown.length;
+  const cell = "border:1px solid #ccc;padding:4px 8px;font-family:Segoe UI,Arial,sans-serif;font-size:13px;";
+  const html = [
+    `<div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#000;">`,
+    `<p>Dear IT Head,</p>`,
+    `<p>${escapeHtml(requester.name)} imported the existing inventory. Please approve the recorded hand-overs of <b>${devices.length}</b> device(s) in one go:</p>`,
+    `<table style="border-collapse:collapse;margin:12px 0;">`,
+    `<tr><th style="${cell}">Device</th><th style="${cell}">Asset ID</th><th style="${cell}">User</th></tr>`,
+    shown.map((d) => `<tr><td style="${cell}">${escapeHtml(d.name)}</td><td style="${cell}">${escapeHtml(d.id)}</td><td style="${cell}">${escapeHtml(d.assignee)}</td></tr>`).join(""),
+    `</table>`,
+    more > 0 ? `<p>…and ${more} more (all listed on the approval page).</p>` : "",
+    approvalButtons(approveUrl, rejectUrl),
+    `<p>Encalm IT Asset Management System</p>`,
+    `</div>`,
+  ].join("");
+  return {
+    to: cleanRecipients([...MS_CONFIG.APPROVAL_EMAILS]),
+    subject: `[Approval required] Inventory import — ${devices.length} hand-over(s)`,
+    body: [
+      `Dear IT Head,`,
+      "",
+      `${requester.name} imported the existing inventory. Please approve ${devices.length} recorded hand-over(s):`,
+      "",
+      ...shown.map((d) => `• ${d.name} (${d.id}) → ${d.assignee}`),
+      more > 0 ? `…and ${more} more` : "",
+      "",
+      `Approve all: ${approveUrl}`,
+      `Reject all: ${rejectUrl}`,
+    ].join("\n"),
+    html,
+  };
+}
+
+/** Name of whoever holds the device now (open custody record), if anyone. */
+function currentHolderName(asset: Asset): string {
+  const open = [...(asset.assignmentHistory || [])].reverse().find((r) => !r.returnedAt);
+  if (open) return open.assignee;
+  return asset.status === "in_use" || asset.status === "maintenance" ? asset.assignee || "" : "";
 }
 
 export function buildReassignDecisionMail(
@@ -302,11 +403,12 @@ export function buildReassignDecisionMail(
   const pending = req.pendingChanges || {};
   return {
     to: cleanRecipients([req.requesterEmail]),
-    subject: `[${approved ? "Approved" : "Rejected"}] Reassign ${asset.name} (${asset.id})`,
+    subject: `[${approved ? "Approved" : "Rejected"}] Hand over ${asset.name} (${asset.id}) to ${pending.assignee || "—"}`,
     body: [
       `Hello ${req.requesterName},`,
       "",
-      `Your request to reassign ${asset.name} (${asset.id}) to ${pending.assignee || "—"} was ${approved ? "APPROVED" : "REJECTED"} by ${approverName}.`,
+      `Your request to hand over ${asset.name} (${asset.id}) to ${pending.assignee || "—"} was ${approved ? "APPROVED" : "REJECTED"} by ${approverName}.`,
+      approved ? `${pending.assignee || "The user"} has been sent the hand-over confirmation email.` : "The device stays as it was.",
       req.decisionNotes ? `Notes: ${req.decisionNotes}` : "",
       "",
       `Current status: ${STATUS_LABELS[asset.status] ?? asset.status}`,

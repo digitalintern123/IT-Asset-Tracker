@@ -11,9 +11,9 @@ export const EVENT_LABELS: Record<AssetEventType, string> = {
   assigned: "Assigned",
   returned: "Returned",
   status_changed: "Status changed",
-  reassign_requested: "Reassignment requested",
-  reassign_approved: "Reassignment approved",
-  reassign_rejected: "Reassignment rejected",
+  reassign_requested: "Hand-over requested (awaiting IT Head)",
+  reassign_approved: "Hand-over approved",
+  reassign_rejected: "Hand-over rejected",
   confirmed: "Receipt confirmed by user",
 };
 

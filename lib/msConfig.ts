@@ -55,6 +55,12 @@ export const MS_CONFIG = {
   // SharePoint list where users record "I have received this device".
   CONFIRMATIONS_LIST_NAME: "Asset Confirmations",
 
+  // Approval matrix: who receives "Approval required" emails for every
+  // hand-over (assign / reassign / import). They approve by signing in, and
+  // must be IT Asset Admins (Asset.Admin role) — anyone else is refused.
+  // Put the Head of IT (and deputies) here.
+  APPROVAL_EMAILS: ["encalmit@encalm.com"],
+
   // Receive maintenance notices (with the device's user).
   IT_MANAGER_EMAILS: ["it@encalmhospitality.com"],
 } as const;

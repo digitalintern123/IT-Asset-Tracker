@@ -30,6 +30,16 @@ const OUT = path.join(__dirname, "../../test-results"), SAMPLE = path.join(__dir
   check("assets list has imported devices", t.includes("GOAEHPL-NB001") && t.includes("GOAEHPL-NB004"));
   await page.getByText("GOAEHPL-NB002").first().click(); await page.waitForTimeout(1500);
   t = await body();
+  check("before approval: import hand-over pending", /APPROVAL PENDING/i.test(t) && t.includes("INVENTORY IMPORT"));
+  // One approval for the whole import (link from the single email)
+  const batch = await page.evaluate(() => JSON.parse(localStorage.getItem("@encalm/asset_cache_v3")).items.find((a) => a.approvalRequest && a.approvalRequest.batchId).approvalRequest.batchId);
+  await page.goto(`http://localhost:10000/approve?batch=${batch}&decision=approve`, { waitUntil: "networkidle" }); await page.waitForTimeout(1500);
+  check("batch approve page lists all 3", (await body()).includes("Inventory import — 3 hand-over(s)"));
+  await page.getByRole("button", { name: "Approve all 3" }).click(); await page.waitForTimeout(3000);
+  check("batch approved in one go", (await body()).includes("3 hand-over(s) approved"), (await body()).slice(0, 200));
+  await page.goto("http://localhost:10000/", { waitUntil: "networkidle" }); await page.waitForTimeout(1200);
+  await page.getByText("GOAEHPL-NB002").first().click(); await page.waitForTimeout(1500);
+  t = await body();
   check("detail: department/criticality/operational", t.includes("Department") && t.includes("Criticality") && t.includes("Operational"));
   check("detail: Imported — not confirmed", t.includes("Imported — not confirmed"));
   check("detail: Send confirmation request button", t.includes("Send confirmation request"));

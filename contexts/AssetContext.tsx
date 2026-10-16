@@ -23,7 +23,7 @@ import {
   eventsForUpdate,
   isDeleteLocked,
   makeEvent,
-  needsReassignApproval,
+  needsAssignmentApproval,
   newCustodyRecords,
   openCustodyRecord,
   toAssetInput,
@@ -37,6 +37,7 @@ import {
   buildMaintenanceMail,
   buildReassignDecisionMail,
   buildReassignRequestMail,
+  buildImportApprovalMail,
   deliverMail,
 } from "@/lib/mail";
 import { MS_CONFIG, isMsConfigured } from "@/lib/msConfig";
@@ -76,6 +77,26 @@ function assignmentMails(
     );
 }
 
+/** A pending hand-over request for the approval matrix (IT Asset Admins). */
+function newAssignmentRequest(
+  requester: { name: string; email?: string },
+  pending: NonNullable<ApprovalRequest["pendingChanges"]>,
+  reason: string,
+  batchId?: string
+): ApprovalRequest {
+  return {
+    id: `appr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    action: "reassign",
+    status: "pending",
+    requesterName: requester.name,
+    requesterEmail: requester.email || "",
+    requestedAt: new Date().toISOString(),
+    reason,
+    pendingChanges: pending,
+    ...(batchId ? { batchId } : {}),
+  };
+}
+
 const PENDING_REQUEST_MESSAGE =
   "This device already has a request waiting for IT Admin approval. Wait for it to be approved or rejected first.";
 
@@ -95,6 +116,8 @@ export interface UpdateAssetOptions {
   reason?: string;
   extraEvents?: AssetEvent[];
   extraMails?: MailMessage[];
+  /** Approved import batch: mark new custody as imported, send no user email. */
+  imported?: boolean;
 }
 
 const CACHE_KEY = "@encalm/asset_cache_v3";
@@ -245,12 +268,19 @@ interface AssetContextValue {
     approved: boolean,
     decisionNotes?: string
   ) => Promise<void>;
+  /** Approve/reject all pending hand-overs of one import batch at once. */
+  resolveApprovalBatch: (
+    batchId: string,
+    approved: boolean,
+    decisionNotes?: string,
+    onProgress?: (done: number, total: number) => void
+  ) => Promise<{ done: number; failed: { id: string; error: string }[] }>;
   refresh: () => Promise<void>;
   /** One-time inventory import: creates assets in order, no emails. */
   importAssets: (
     rows: { input: AssetInput; assigneeEmail?: string }[],
     onProgress?: (done: number) => void
-  ) => Promise<{ ok: boolean; id?: string; error?: string }[]>;
+  ) => Promise<{ ok: boolean; id?: string; error?: string; pending?: boolean }[]>;
   /** Email the current user the hand-over confirmation request again. */
   sendConfirmationRequest: (id: string) => Promise<"sent" | "draft" | "failed">;
 }
@@ -477,18 +507,46 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       // 3. Stable Asset ID generation
       const stableId = generateStableAssetId(input.category, assets);
 
-      // 4. Initial custody history + audit trail
-      const { history: initialHistory, events: initialEvents } = eventsForCreate(input, {
+      // 4. Approval matrix: issuing the new device to someone waits for an
+      //    IT Asset Admin. It is registered as a New Device with the request.
+      const requester = { name: user?.name || "IT Staff", email: user?.email };
+      let createInput = input;
+      let approvalRequest: ApprovalRequest | undefined;
+      const requestEvents: AssetEvent[] = [];
+      if (needsAssignmentApproval(null, input)) {
+        approvalRequest = newAssignmentRequest(
+          requester,
+          {
+            status: "in_use",
+            assignee: input.assignee.trim(),
+            assigneeEmail: opts?.assigneeEmail,
+            location: input.location,
+          },
+          input.notes || "New device hand-over"
+        );
+        createInput = { ...input, status: "new", assignee: "", approvalRequest };
+        requestEvents.push(
+          makeEvent("reassign_requested", {
+            by: requester.name,
+            assignee: input.assignee.trim(),
+            assigneeEmail: opts?.assigneeEmail,
+            notes: approvalRequest.reason,
+          })
+        );
+      }
+
+      // 5. Initial custody history + audit trail
+      const { history: initialHistory, events: initialEvents } = eventsForCreate(createInput, {
         by: user?.name || "IT Staff",
         assigneeEmail: opts?.assigneeEmail,
       });
 
       const newAsset: Asset = {
-        ...input,
+        ...createInput,
         id: stableId,
         spItemId: user?.isDemo ? String(assets.length + 1) : undefined,
         assignmentHistory: initialHistory,
-        events: initialEvents,
+        events: [...initialEvents, ...requestEvents],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         _syncStatus: user?.isDemo ? "synced" : isNetworkOnline() ? "synced" : "pending_create",
@@ -512,6 +570,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         for (const mail of assignmentMails(saved, [], initialHistory, user?.name || "Encalm IT")) {
           void deliverMail(token, mail);
         }
+        if (approvalRequest) void deliverMail(token, buildReassignRequestMail(saved, approvalRequest, appOrigin()));
       };
 
       if (!isNetworkOnline()) {
@@ -588,29 +647,26 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       const extraEvents: AssetEvent[] = [...(opts?.extraEvents || [])];
       const mails: MailMessage[] = [...(opts?.extraMails || [])];
 
-      // 3. Moving an In Use device to another user needs IT Admin approval.
-      //    Nothing changes yet: the device stays with its current user and a
-      //    pending reassignment request is recorded instead.
-      if (!opts?.approvedBy && needsReassignApproval(existing, input, user?.role === "admin")) {
+      // 3. Approval matrix: handing the device to a person (issue or
+      //    reassign) waits for an IT Asset Admin, whoever asks. Nothing changes
+      //    yet: the device stays as it is and a pending request is recorded.
+      let handOverPending = false;
+      if (!opts?.approvedBy && needsAssignmentApproval(existing, input)) {
+        handOverPending = true;
         if (existing.approvalRequest?.status === "pending") {
           throw new Error(PENDING_REQUEST_MESSAGE);
         }
-        const request: ApprovalRequest = {
-          id: `appr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-          action: "reassign",
-          status: "pending",
-          requesterName: by,
-          requesterEmail: user?.email || "",
-          requestedAt: new Date().toISOString(),
-          reason: opts?.reason || input.notes || "Reassignment requested",
-          pendingChanges: {
-            status: "in_use",
+        const request = newAssignmentRequest(
+          { name: by, email: user?.email },
+          {
+            status: input.status === "maintenance" ? "maintenance" : "in_use",
             assignee: input.assignee.trim(),
             assigneeEmail: opts?.assigneeEmail,
             location: input.location,
             notes: input.notes,
           },
-        };
+          opts?.reason || input.notes || "Hand-over requested"
+        );
         // Keep the technician's other edits; only the handover waits for approval.
         input = {
           ...input,
@@ -627,19 +683,28 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
             notes: request.reason,
           })
         );
-        mails.push(buildReassignRequestMail(existing, request));
+        mails.push(buildReassignRequestMail(existing, request, appOrigin()));
       }
 
-      // 4. Custody history + audit trail (report logs). An admin reassigning
-      //    an In Use device approves their own change.
-      const selfApproved =
-        user?.role === "admin" && needsReassignApproval(existing, input, false) ? by : undefined;
-      const { history, events: changeEvents } = eventsForUpdate(existing, input, {
+      // 4. Custody history + audit trail (report logs).
+      const updated = eventsForUpdate(existing, input, {
         by,
-        approvedBy: opts?.approvedBy || selfApproved,
-        assigneeEmail: opts?.assigneeEmail,
+        approvedBy: opts?.approvedBy,
+        // The email belongs to the requested new user; while the hand-over
+        // waits for approval it must not touch the current holder's record.
+        assigneeEmail: handOverPending ? undefined : opts?.assigneeEmail,
         reason: opts?.reason,
       });
+      // Approved import batch: recorded as existing (imported) hand-overs,
+      // so no confirmation email goes to the user.
+      const history = opts?.imported
+        ? updated.history.map((r) =>
+            (existing.assignmentHistory || []).some((old) => old.id === r.id)
+              ? r
+              : { ...r, imported: true, notes: "Imported from inventory sheet" }
+          )
+        : updated.history;
+      const changeEvents = updated.events;
       const events = [...(existing.events || []), ...changeEvents, ...extraEvents];
 
       const updatedAsset: Asset = {
@@ -654,7 +719,9 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       if (input.status === "maintenance" && existing.status !== "maintenance") {
         mails.push(buildMaintenanceMail(updatedAsset, input.notes, by));
       }
-      mails.push(...assignmentMails(updatedAsset, existing.assignmentHistory, history, by));
+      if (!opts?.imported) {
+        mails.push(...assignmentMails(updatedAsset, existing.assignmentHistory, history, by));
+      }
 
       // Demo Mode (no real email is sent)
       if (user?.isDemo) {
@@ -928,12 +995,20 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       approved: boolean,
       decisionNotes?: string
     ): Promise<void> => {
+      // Only IT Asset Admins decide (the approval matrix). The SharePoint list
+      // permissions enforce the same on the server side.
+      if (user?.role !== "admin") {
+        throw new Error("Only IT Asset Admins can approve or reject requests.");
+      }
       const existing = assetsRef.current.find((a) => matchesAsset(a, id));
       if (!existing || !existing.approvalRequest) {
         return;
       }
 
       const req = existing.approvalRequest;
+      if (req.status !== "pending") {
+        throw new Error(`This request was already ${req.status}${req.approverName ? ` by ${req.approverName}` : ""}.`);
+      }
       const approver = user?.name || "IT Administrator";
       const decided: ApprovalRequest = {
         ...req,
@@ -943,8 +1018,9 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         decidedAt: new Date().toISOString(),
         decisionNotes,
       };
+      // A batch (import) is decided in one go: no email per device.
       const decisionMail =
-        req.action === "reassign"
+        req.action === "reassign" && !req.batchId
           ? [buildReassignDecisionMail(existing, decided, approved, approver)]
           : [];
 
@@ -978,7 +1054,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
           id,
           {
             ...toAssetInput(existing),
-            status: "in_use",
+            status: req.pendingChanges.status || "in_use",
             assignee: req.pendingChanges.assignee || existing.assignee,
             location: req.pendingChanges.location || existing.location,
             approvalRequest: undefined,
@@ -987,6 +1063,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
             approvedBy: approver,
             assigneeEmail: req.pendingChanges.assigneeEmail,
             reason: req.reason,
+            imported: !!req.pendingChanges.imported,
             extraEvents: [
               makeEvent("reassign_approved", {
                 by: approver,
@@ -1010,14 +1087,44 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         );
       }
     },
-    [assets, user?.name, user?.email, updateAsset, deleteAsset]
+    [assets, user?.name, user?.email, user?.role, updateAsset, deleteAsset]
+  );
+
+  /** Approve or reject every pending request of one import batch. */
+  const resolveApprovalBatch = useCallback(
+    async (
+      batchId: string,
+      approved: boolean,
+      decisionNotes?: string,
+      onProgress?: (done: number, total: number) => void
+    ): Promise<{ done: number; failed: { id: string; error: string }[] }> => {
+      if (user?.role !== "admin") {
+        throw new Error("Only IT Asset Admins can approve or reject requests.");
+      }
+      const ids = assetsRef.current
+        .filter((a) => a.approvalRequest?.batchId === batchId && a.approvalRequest.status === "pending")
+        .map((a) => a.id);
+      const failed: { id: string; error: string }[] = [];
+      let done = 0;
+      for (const id of ids) {
+        try {
+          await resolveApproval(id, approved, decisionNotes);
+          done++;
+        } catch (err: any) {
+          failed.push({ id, error: err?.message || "Failed" });
+        }
+        onProgress?.(done + failed.length, ids.length);
+      }
+      return { done, failed };
+    },
+    [user?.role, resolveApproval]
   );
 
   const importAssets = useCallback(
     async (
       rows: { input: AssetInput; assigneeEmail?: string }[],
       onProgress?: (done: number) => void
-    ): Promise<{ ok: boolean; id?: string; error?: string }[]> => {
+    ): Promise<{ ok: boolean; id?: string; error?: string; pending?: boolean }[]> => {
       if (user?.permissions && !user.permissions.canCreateAsset) {
         throw new Error("Unauthorized: Your role does not allow creating new assets.");
       }
@@ -1029,16 +1136,51 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       // Work from a running list so each new ID sees the ones created before it.
       let working = [...assetsRef.current];
       const importedAssets: Asset[] = [];
-      const results: { ok: boolean; id?: string; error?: string }[] = [];
+      const results: { ok: boolean; id?: string; error?: string; pending?: boolean }[] = [];
+      // Approval matrix: the whole import's hand-overs are approved once.
+      const batchId = `imp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+      const requester = { name: by, email: user?.email };
 
       setSyncing(true);
       setSyncError(null);
       try {
         for (let i = 0; i < rows.length; i++) {
-          const { input, assigneeEmail } = rows[i];
+          const { input: rowInput, assigneeEmail } = rows[i];
           try {
-            const id = generateStableAssetId(input.category, working);
+            const id = generateStableAssetId(rowInput.category, working);
+            // A row with a user is registered in stock with a pending hand-over
+            // in this batch; it becomes In Use once the batch is approved.
+            const handOver = needsAssignmentApproval(null, rowInput);
+            const input: AssetInput = handOver
+              ? {
+                  ...rowInput,
+                  status: "available",
+                  assignee: "",
+                  approvalRequest: newAssignmentRequest(
+                    requester,
+                    {
+                      status: "in_use",
+                      assignee: rowInput.assignee.trim(),
+                      assigneeEmail,
+                      location: rowInput.location,
+                      imported: true,
+                    },
+                    "Existing hand-over from the inventory sheet",
+                    batchId
+                  ),
+                }
+              : rowInput;
             const created = eventsForCreate(input, { by, assigneeEmail, reason: "Imported from inventory sheet" });
+            if (handOver) {
+              created.events.push(
+                makeEvent("reassign_requested", {
+                  by,
+                  assignee: rowInput.assignee.trim(),
+                  assigneeEmail,
+                  notes: "Inventory import — awaiting one-time approval",
+                })
+              );
+            }
             // Legacy hand-overs: never emailed, shown as "Imported — not confirmed".
             const history = created.history.map((rec) => ({
               ...rec,
@@ -1062,7 +1204,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
             }
             working = [asset, ...working];
             importedAssets.unshift(asset);
-            results.push({ ok: true, id: asset.id });
+            results.push({ ok: true, id: asset.id, pending: handOver });
           } catch (err: any) {
             results.push({ ok: false, error: err?.message || "Failed to save" });
           }
@@ -1071,6 +1213,14 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       } finally {
         await commitAssets((list) => [...importedAssets, ...list]);
         setSyncing(false);
+      }
+      // One approval email for every hand-over in this import.
+      const pendingDevices = importedAssets
+        .filter((a) => a.approvalRequest?.batchId === batchId)
+        .reverse()
+        .map((a) => ({ name: a.name, id: a.id, assignee: a.approvalRequest?.pendingChanges?.assignee || "" }));
+      if (pendingDevices.length && !user?.isDemo) {
+        void deliverMail(token, buildImportApprovalMail(batchId, pendingDevices, requester, appOrigin()));
       }
       return results;
     },
@@ -1113,6 +1263,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       reassignAsset,
       requestApproval,
       resolveApproval,
+      resolveApprovalBatch,
       refresh,
       importAssets,
       sendConfirmationRequest,
@@ -1131,6 +1282,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       reassignAsset,
       requestApproval,
       resolveApproval,
+      resolveApprovalBatch,
       refresh,
       importAssets,
       sendConfirmationRequest,

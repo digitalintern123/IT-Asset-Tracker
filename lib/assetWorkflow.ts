@@ -39,20 +39,25 @@ function trimmed(s?: string | null): string {
 }
 
 /**
- * True when a non-admin moves a device someone holds (In Use, or in
- * Maintenance while still held) to a different user. Returning a device
- * (Available / Out of Order) needs no approval. Maintenance counts too, so
- * In Use → Maintenance (new user) → In Use can't skip the approval.
+ * Approval matrix: every hand-over to a person — a new device issued, a
+ * returned device re-issued, or a device moved to another user — needs an
+ * IT Asset Admin's approval first, whoever makes the change (admins too).
+ * Changes that don't hand the device to someone new need none: returning it,
+ * maintenance with the same holder, or edits that keep the holder.
  */
-export function needsReassignApproval(existing: Asset, input: AssetInput, isAdmin: boolean): boolean {
-  if (isAdmin) return false;
-  const held = existing.status === "in_use" || (existing.status === "maintenance" && !!openCustodyRecord(existing));
-  if (!held) return false;
-  if (input.status !== "in_use" && input.status !== "maintenance") return false;
-  const holder = existing.status === "in_use" ? existing.assignee : openCustodyRecord(existing)?.assignee;
-  const from = trimmed(holder).toLowerCase();
+export function needsAssignmentApproval(existing: Asset | null, input: AssetInput): boolean {
   const to = trimmed(input.assignee).toLowerCase();
-  return !!to && from !== to;
+  if (!to) return false;
+  if (input.status !== "in_use" && input.status !== "maintenance") return false;
+  // Current holder: the open custody record, or (older items without
+  // history) the assignee of a device that is in use / in maintenance.
+  const held = existing && (existing.status === "in_use" || existing.status === "maintenance");
+  const holder = existing
+    ? openCustodyRecord(existing)?.assignee ?? (held ? existing.assignee : "")
+    : "";
+  if (trimmed(holder)) return trimmed(holder).toLowerCase() !== to;
+  // Nobody holds it: issuing it (In Use) is a hand-over; Maintenance isn't.
+  return input.status === "in_use";
 }
 
 /** Custody history and new audit events for registering a device. */

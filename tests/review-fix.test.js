@@ -49,10 +49,10 @@ ok("merge keeps the local return (no reopened custody)", m.assignmentHistory.len
 ok("merge keeps server's pending approval request", m.approvalRequest && m.approvalRequest.status === "pending");
 // D10 approval bypass via maintenance
 const tech = false;
-ok("In Use -> Maintenance with new user needs approval", W.needsReassignApproval(base, { ...base, status: "maintenance", assignee: "Bob" }, tech));
-ok("Maintenance (still held) -> In Use for other user needs approval", W.needsReassignApproval({ ...base, status: "maintenance" }, { ...base, status: "in_use", assignee: "Bob" }, tech));
-ok("Maintenance (no holder) -> In Use needs no approval", !W.needsReassignApproval({ ...base, status: "maintenance", assignmentHistory: [rec("h1", "Rahul", { returnedAt: "x" })] }, { ...base, status: "in_use", assignee: "Bob" }, tech));
-ok("same holder back from maintenance needs no approval", !W.needsReassignApproval({ ...base, status: "maintenance" }, { ...base, status: "in_use", assignee: "Rahul" }, tech));
+ok("In Use -> Maintenance with new user needs approval", W.needsAssignmentApproval(base, { ...base, status: "maintenance", assignee: "Bob" }));
+ok("Maintenance (still held) -> In Use for other user needs approval", W.needsAssignmentApproval({ ...base, status: "maintenance" }, { ...base, status: "in_use", assignee: "Bob" }));
+ok("Maintenance (no holder) -> In Use for someone needs approval (hand-over)", W.needsAssignmentApproval({ ...base, status: "maintenance", assignmentHistory: [rec("h1", "Rahul", { returnedAt: "x" })] }, { ...base, status: "in_use", assignee: "Bob" }));
+ok("same holder back from maintenance needs no approval", !W.needsAssignmentApproval({ ...base, status: "maintenance" }, { ...base, status: "in_use", assignee: "Rahul" }));
 // D11 status model
 ok("In Use -> New rejected", !SM.validateStatusTransition("in_use", "new", { assignee: "x" }).valid);
 ok("New -> Available rejected", !SM.validateStatusTransition("new", "available", {}).valid);

@@ -300,6 +300,30 @@ curl -s -o /dev/null -w "%{http_code}\n" https://<host>/nope.js      # 404
 
 ---
 
+## Approval matrix (every hand-over)
+
+Every hand-over of a device to a person — a new device issued **In Use**, a
+returned device re-issued, or a device moved to another user — waits for an
+**IT Asset Admin** (Asset.Admin role) to approve it, whoever asks (admins
+included). Returning a device, maintenance with the same user and ordinary
+edits need no approval.
+
+1. The request is saved on the device (banner *Approval pending: hand-over*)
+   and an email with **Approve / Reject** buttons goes to `APPROVAL_EMAILS`
+   in `lib/msConfig.ts` — **put the Head of IT's address there**.
+2. The button opens `/approve`; the approver signs in with Microsoft 365 and
+   presses Approve or Reject. Opening the link alone changes nothing, a link
+   works once, and non-admins are refused.
+3. On approval the device is handed over and the user gets the "Laptop
+   Confirmation" email; the requester gets the decision by email. Admins can
+   also approve from the device page.
+4. **Excel import:** all devices with a user in one import share **one**
+   approval (one email, *Approve all N*). Approved import hand-overs are
+   recorded as "Imported — not confirmed"; users get no email.
+
+The approvers need **Edit** on the IT Asset Register list (the IT Asset Admins
+group, §5).
+
 ## 7. Monitoring, diagnostics and backups
 
 **Uptime.** `.github/workflows/uptime.yml` checks the live site every 15

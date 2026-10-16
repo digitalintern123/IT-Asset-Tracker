@@ -73,7 +73,7 @@ function isPendingReassign(result: Asset | undefined, requestedAssignee: string)
 }
 
 function showPendingReassignNotice(newAssignee: string) {
-  const msg = `Reassignment to ${newAssignee} has been sent to IT Admin for approval. The device stays with its current user until it is approved.`;
+  const msg = `Hand-over to ${newAssignee} has been sent to the IT Head (IT Asset Admins) for approval by email. The device is handed over, and ${newAssignee} asked to confirm receipt, only after it is approved.`;
   if (Platform.OS === "web") window.alert(msg);
   else Alert.alert("Sent for approval", msg);
 }
@@ -510,7 +510,13 @@ export default function AssetDetailScreen() {
               <AlertCircle size={20} color="#F57F17" strokeWidth={1.8} style={{ marginTop: 2 }} />
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 13, fontFamily: "Inter_700Bold", color: "#E65100" }}>
-                  APPROVAL PENDING: {asset.approvalRequest.action.toUpperCase()} REQUEST
+                  APPROVAL PENDING:{" "}
+                  {asset.approvalRequest.action === "reassign"
+                    ? asset.approvalRequest.batchId
+                      ? "HAND-OVER (INVENTORY IMPORT)"
+                      : "HAND-OVER"
+                    : asset.approvalRequest.action.toUpperCase()}{" "}
+                  REQUEST
                 </Text>
                 <Text
                   style={{
@@ -542,7 +548,7 @@ export default function AssetDetailScreen() {
                       marginTop: 4,
                     }}
                   >
-                    New user: {asset.approvalRequest.pendingChanges.assignee}
+                    Hand over to: {asset.approvalRequest.pendingChanges.assignee}
                   </Text>
                 ) : null}
               </View>

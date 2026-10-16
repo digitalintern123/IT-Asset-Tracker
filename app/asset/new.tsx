@@ -131,6 +131,11 @@ export default function NewAssetScreen() {
             if (asset.assignee && asset.status === "in_use") {
               await sendAssetAssignedNotification(asset, fromName);
             }
+            if (asset.approvalRequest?.status === "pending") {
+              const msg = `${asset.name} is registered. The hand-over to ${asset.approvalRequest.pendingChanges?.assignee} has been sent to the IT Head (IT Asset Admins) for approval; it happens once approved.`;
+              if (Platform.OS === "web") window.alert(msg);
+              else Alert.alert("Sent for approval", msg);
+            }
             router.replace(`/asset/${asset.id}`);
           } catch (err: any) {
             const msg = err?.message || "Failed to create asset in SharePoint.";

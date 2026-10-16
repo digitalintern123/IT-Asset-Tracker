@@ -50,7 +50,7 @@ export default function ImportScreen() {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [skippedCount, setSkippedCount] = useState(0);
-  const [results, setResults] = useState<{ ok: boolean; error?: string; row: number }[]>([]);
+  const [results, setResults] = useState<{ ok: boolean; error?: string; row: number; pending?: boolean }[]>([]);
 
   const parsed = useMemo(
     () =>
@@ -136,8 +136,9 @@ export default function ImportScreen() {
         <Text style={[styles.muted, muted]}>
           Upload the Encalm IT inventory sheet (.xlsx) with columns: Computer name, Make, Model, Serial number,
           Location, Used in location, Department, User name, User email, City, Remark, Custodianship, Criticality,
-          Status (Operational / Non Operational), Asset categorisation. No emails are sent; imported hand-overs
-          show as "Imported — not confirmed".
+          Status (Operational / Non Operational), Asset categorisation. No emails are sent to users. Devices with a
+          user wait for one approval of the whole import by the IT Head (one email); after it they show as
+          "Imported — not confirmed".
         </Text>
         <View style={styles.actions}>
           <Pressable onPress={choose} style={({ pressed }) => [styles.primary, { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 }]}>
@@ -219,6 +220,9 @@ export default function ImportScreen() {
             {results.filter((r) => r.ok).length} imported
             {results.some((r) => !r.ok) ? ` · ${results.filter((r) => !r.ok).length} failed` : ""}
             {skippedCount ? ` · ${skippedCount} skipped` : ""}
+            {results.some((r) => r.pending)
+              ? ` · ${results.filter((r) => r.pending).length} hand-over(s) sent to the IT Head for one-time approval`
+              : ""}
           </Text>
           {results
             .filter((r) => !r.ok)

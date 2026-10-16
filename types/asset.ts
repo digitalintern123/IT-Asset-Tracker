@@ -72,7 +72,13 @@ export interface ApprovalRequest {
   requesterEmail: string;
   requestedAt: string;
   reason: string;
-  pendingChanges?: Partial<AssetInput> & { assigneeEmail?: string };
+  pendingChanges?: Partial<AssetInput> & {
+    assigneeEmail?: string;
+    /** One-time inventory import: record as an existing (imported) hand-over. */
+    imported?: boolean;
+  };
+  /** Set on every request of one inventory import, approved together. */
+  batchId?: string;
   approverName?: string;
   approverEmail?: string;
   decidedAt?: string;

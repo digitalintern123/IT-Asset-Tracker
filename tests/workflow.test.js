@@ -52,10 +52,14 @@ const apply = (input, ctx) => { const r = wf.eventsForUpdate(asset, input, ctx);
 let r = apply({ ...wf.toAssetInput(asset), status: "in_use", assignee: "Rahul" }, { by: "Tech Tina", assigneeEmail: "rahul@encalm.com" });
 ok("issue: assigned + status event, custody opened with email", r.events.map((e) => e.type).join() === "assigned,status_changed" && asset.assignmentHistory.length === 1 && asset.assignmentHistory[0].assigneeEmail === "rahul@encalm.com");
 const toPriya = { ...wf.toAssetInput(asset), assignee: "Priya" };
-ok("technician reassign needs approval", wf.needsReassignApproval(asset, toPriya, false));
-ok("admin reassign does not", !wf.needsReassignApproval(asset, toPriya, true));
-ok("returning (available) needs no approval", !wf.needsReassignApproval(asset, { ...toPriya, status: "available", assignee: "" }, false));
-ok("same user (case) needs no approval", !wf.needsReassignApproval(asset, { ...toPriya, assignee: " rahul " }, false));
+ok("reassign needs approval", wf.needsAssignmentApproval(asset, toPriya));
+ok("admins need approval too (approval matrix)", wf.needsAssignmentApproval(asset, toPriya));
+ok("returning (available) needs no approval", !wf.needsAssignmentApproval(asset, { ...toPriya, status: "available", assignee: "" }));
+ok("same user (case) needs no approval", !wf.needsAssignmentApproval(asset, { ...toPriya, assignee: " rahul " }));
+ok("issuing a new device needs approval", wf.needsAssignmentApproval(null, { ...toPriya, status: "in_use" }));
+ok("registering a New Device without a user needs none", !wf.needsAssignmentApproval(null, { ...toPriya, status: "new", assignee: "" }));
+ok("re-issuing a returned device needs approval", wf.needsAssignmentApproval({ ...asset, status: "available", assignee: "", assignmentHistory: [] }, toPriya));
+ok("older item without history: same assignee edit needs none", !wf.needsAssignmentApproval({ ...asset, assignmentHistory: [] }, { ...toPriya, assignee: asset.assignee }));
 r = apply(toPriya, { by: "Admin Anu", approvedBy: "Admin Anu", assigneeEmail: "priya@encalm.com" });
 ok("approved reassign: Rahul returned, Priya assigned with approver", r.events.map((e) => e.type).join() === "returned,assigned" && r.events[1].approvedBy === "Admin Anu");
 ok("custody: old closed, new open with approvedBy", asset.assignmentHistory.length === 2 && !!asset.assignmentHistory[0].returnedAt && !asset.assignmentHistory[1].returnedAt && asset.assignmentHistory[1].approvedBy === "Admin Anu");
@@ -102,7 +106,7 @@ ok("conflict merge unions events in time order", merged.events.map((e) => e.by).
   ok("cleanRecipients dedupes/validates", JSON.stringify(mail.cleanRecipients(["A@x.com", "a@x.com", "bad", "", null, " c@y.org "])) === JSON.stringify(["A@x.com", "c@y.org"]));
   const req = { id: "r", action: "reassign", status: "pending", requesterName: "Tina", requesterEmail: "tina@encalm.com", requestedAt: new Date().toISOString(), reason: "Shift change", pendingChanges: { assignee: "Priya", assigneeEmail: "priya@encalm.com" } };
   const rm = mail.buildReassignRequestMail(asset, req);
-  ok("reassign request mail -> admins, names new user", rm.to.length === 3 && rm.body.includes("Priya") && rm.body.includes("Shift change"));
+  ok("hand-over request mail -> approvers, names new user", rm.to.length >= 1 && rm.body.includes("Priya") && rm.body.includes("Shift change") && rm.body.includes("/approve?"));
   const dm = mail.buildReassignDecisionMail(asset, req, true, "Admin Anu");
   ok("decision mail -> requester", dm.to[0] === "tina@encalm.com" && dm.subject.startsWith("[Approved]"));
 
