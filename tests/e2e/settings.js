@@ -100,6 +100,23 @@ const check = (n, c, x = "") => console.log(`${c ? "PASS" : "FAIL"} ${n} ${x}`);
   check("check re-run: columns and list now ✓", !at.includes("Missing: Department") && !at.includes("Fix automatically"));
   await ap.screenshot({ path: OUT + "/settings-fixed.png", fullPage: true });
   check("viewer never sees Fix automatically", (await page.getByRole("button", { name: "Fix automatically" }).count()) === 0);
+  // Staff (no IT role) can't see the restricted register: friendly message
+  const vctx = await browser.newContext({ viewport: { width: 900, height: 1400 } });
+  await vctx.route("https://graph.microsoft.com/**", async (route) => {
+    const url = decodeURIComponent(route.request().url());
+    const j = (status, body) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+    if (url.includes("/lists")) return j(200, { value: [] });   // register hidden by permissions
+    if (url.includes("sharepoint.com")) return j(200, { id: "site1" });
+    return j(401, {});
+  });
+  // Like IIS: no /api backend (static handler answers 406)
+  await vctx.route("**/api/assets", (route) => route.fulfill({ status: 406, contentType: "text/html", body: "<html>406</html>" }));
+  const vp = await vctx.newPage();
+  await vp.goto("http://localhost:10000/login", { waitUntil: "networkidle" });
+  await seedSession(vp, { email: "staff@encalm.com", name: "Staff", initials: "ST" });
+  await vp.goto("http://localhost:10000/", { waitUntil: "networkidle" }); await vp.waitForTimeout(2000);
+  const vt = await vp.locator("body").innerText();
+  check("staff without access see the 'register is for the IT team' message", vt.includes("The asset register is for the IT team") && vt.includes("Confirm receipt"), vt.slice(0, 200).replace(/\n/g, " | "));
   check("no page errors", errors.length === 0, errors.join(" | "));
   await browser.close();
 })();

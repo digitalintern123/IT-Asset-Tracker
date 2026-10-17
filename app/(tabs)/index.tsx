@@ -31,8 +31,15 @@ export default function AssetsScreen() {
   const { isDesktop } = useResponsive();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { assets, loaded } = useAssets();
+  const { assets, loaded, syncError } = useAssets();
   const { user } = useAuth();
+  // Staff without an IT role can't read the register (it is restricted to
+  // the IT groups in SharePoint); explain that instead of "no assets".
+  const noRegisterAccess =
+    !user?.isDemo &&
+    user?.role === "viewer" &&
+    !!syncError &&
+    /not found|access denied|403|401/i.test(syncError);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
 
@@ -219,12 +226,18 @@ export default function AssetsScreen() {
           ListEmptyComponent={
             loaded ? (
               <EmptyState
-                icon={query || filter !== "all" ? "search" : "package"}
+                icon={noRegisterAccess ? "lock" : query || filter !== "all" ? "search" : "package"}
                 title={
-                  query || filter !== "all" ? "No matches" : "No assets yet"
+                  noRegisterAccess
+                    ? "The asset register is for the IT team"
+                    : query || filter !== "all"
+                    ? "No matches"
+                    : "No assets yet"
                 }
                 message={
-                  query || filter !== "all"
+                  noRegisterAccess
+                    ? "Your account doesn't have access to the device register. To confirm a device you received, use the \"Confirm receipt\" link in your email from Encalm IT."
+                    : query || filter !== "all"
                     ? "Try a different search or filter."
                     : user?.permissions?.canCreateAsset
                     ? "Tap the + button to add your first asset."
