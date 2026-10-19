@@ -132,7 +132,7 @@ export default function NewAssetScreen() {
               await sendAssetAssignedNotification(asset, fromName);
             }
             if (asset.approvalRequest?.status === "pending") {
-              const msg = `${asset.name} is registered. The hand-over to ${asset.approvalRequest.pendingChanges?.assignee} has been sent to the IT Head (IT Asset Admins) for approval; it happens once approved.`;
+              const msg = `${asset.name} is registered. The hand-over to ${asset.approvalRequest.pendingChanges?.assignee} has been sent to the IT Head (IT-Asset Approver) for approval; it happens once approved.`;
               if (Platform.OS === "web") window.alert(msg);
               else Alert.alert("Sent for approval", msg);
             }

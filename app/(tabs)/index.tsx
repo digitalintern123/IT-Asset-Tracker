@@ -40,6 +40,8 @@ export default function AssetsScreen() {
     user?.role === "viewer" &&
     !!syncError &&
     /not found|access denied|403|401/i.test(syncError);
+  // Staff (no IT or auditor role) only see the devices issued to them.
+  const ownOnly = !!user && !user.isDemo && !user.seesAll;
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
 
@@ -232,6 +234,8 @@ export default function AssetsScreen() {
                     ? "The asset register is for the IT team"
                     : query || filter !== "all"
                     ? "No matches"
+                    : ownOnly
+                    ? "No devices issued to you"
                     : "No assets yet"
                 }
                 message={
@@ -239,6 +243,8 @@ export default function AssetsScreen() {
                     ? "Your account doesn't have access to the device register. To confirm a device you received, use the \"Confirm receipt\" link in your email from Encalm IT."
                     : query || filter !== "all"
                     ? "Try a different search or filter."
+                    : ownOnly
+                    ? "Devices handed over to you by Encalm IT appear here."
                     : user?.permissions?.canCreateAsset
                     ? "Tap the + button to add your first asset."
                     : "No devices have been registered yet."

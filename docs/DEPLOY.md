@@ -300,29 +300,81 @@ curl -s -o /dev/null -w "%{http_code}\n" https://<host>/nope.js      # 404
 
 ---
 
-## Approval matrix (every hand-over)
+## Approval matrix (every hand-over and technician edit)
 
-Every hand-over of a device to a person — a new device issued **In Use**, a
-returned device re-issued, or a device moved to another user — waits for an
-**IT Asset Admin** (Asset.Admin role) to approve it, whoever asks (admins
-included). Returning a device, maintenance with the same user and ordinary
-edits need no approval.
+Approvals are decided by members of the security group **IT-Asset Approver**.
+The group reaches the app through the app role **`Asset.Approver`** (display
+name *IT Asset Approver*). Anyone else is refused on the approval page.
 
-1. The request is saved on the device (banner *Approval pending: hand-over*)
-   and an email with **Approve / Reject** buttons goes to `APPROVAL_EMAILS`
-   in `lib/msConfig.ts` — **put the Head of IT's address there**.
-2. The button opens `/approve`; the approver signs in with Microsoft 365 and
-   presses Approve or Reject. Opening the link alone changes nothing, a link
-   works once, and non-admins are refused.
-3. On approval the device is handed over and the user gets the "Laptop
-   Confirmation" email; the requester gets the decision by email. Admins can
-   also approve from the device page.
+**Hand-overs.** Every hand-over of a device to a person needs approval,
+whoever asks (admins included):
+- a new device issued **In Use**
+- a returned device re-issued
+- a device moved to another user
+
+Returning a device and maintenance with the same user need none.
+
+1. The request is saved on the device (banner *Approval pending: hand-over*).
+   An email with **Approve / Reject** buttons goes to `APPROVAL_EMAILS` in
+   `lib/msConfig.ts` (the Head of IT).
+2. The button opens `/approve`. The approver signs in and presses Approve or
+   Reject.
+   - Opening the link alone changes nothing.
+   - A link works once.
+   - Non-approvers are refused.
+3. On approval:
+   - The device is handed over.
+   - The user gets the "Laptop Confirmation" email.
+   - The requester gets the decision.
+   - The new user gets **read access to that one device** in SharePoint, and
+     earlier users lose theirs (see *Staff see only their own devices*).
 4. **Excel import:** all devices with a user in one import share **one**
-   approval (one email, *Approve all N*). Approved import hand-overs are
-   recorded as "Imported — not confirmed"; users get no email.
+   approval (*Approve all N*). Those users get no email.
 
-The approvers need **Edit** on the IT Asset Register list (the IT Asset Admins
-group, §5).
+**Edit requests (IT Technicians).** Technicians press **Edit**, give the
+reason and **Send for approval**. The approvers get an Approve / Reject
+email.
+- **On approval,** the technician is emailed and can save **one change within
+  24 hours**. After that the next edit needs a new request.
+- **A change of user** inside that edit still goes for hand-over approval.
+- **Admins and approvers** edit directly.
+- **The Reassign button** needs no edit request, because the hand-over is
+  approved anyway.
+- This is enforced by the app. Technicians keep *Edit* on the list, because
+  the approved save is made with their own sign-in.
+
+**Report logs** (Settings → Report logs) are open to technicians,
+approvers and admins. They show:
+- requests waiting for approval
+- hand-overs waiting for the user's confirmation
+- the full event history
+
+Exports and backups stay admin-only.
+
+### Staff see only their own devices
+
+| Who | Sees |
+|---|---|
+| Staff with no app role | Only the devices issued to them (open custody record) |
+| Auditor / Viewer (`Asset.Viewer`) | Every device, read-only |
+| Technician, Approver, Admin | Every device |
+
+SharePoint enforces it too: each handed-over device gets its own permissions,
+with Read for its current user.
+
+Setup:
+1. Entra → App registrations → IT Asset Tracker → **API permissions** →
+   *Add a permission* → **SharePoint** → *Delegated* → **AllSites.Manage** →
+   **Grant admin consent**. `setup-entra.ps1` does this.
+2. IT Asset Register → *Settings* → *Permissions for this list*:
+   - Give **IT-Asset Approver** → **Full Control**. Setting item permissions
+     needs *Manage Permissions*.
+   - Keep IT Asset Admins / Technicians / Auditors as before.
+   - Make sure "Everyone except external users" (or all staff) has **no**
+     permission on the list itself.
+3. Sign in as an approver → Settings → **Sync device access**. Run it once
+   now, and again after imports or if a hand-over reported an access
+   problem (Settings → Diagnostics).
 
 ## 7. Monitoring, diagnostics and backups
 

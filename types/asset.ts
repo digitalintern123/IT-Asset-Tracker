@@ -45,7 +45,10 @@ export type AssetEventType =
   | "reassign_requested"
   | "reassign_approved"
   | "reassign_rejected"
-  | "confirmed";
+  | "confirmed"
+  | "edit_requested"
+  | "edit_approved"
+  | "edit_rejected";
 
 /** One entry in an asset's audit trail (the report logs). */
 export interface AssetEvent {
@@ -61,7 +64,8 @@ export interface AssetEvent {
   notes?: string;
 }
 
-export type ApprovalActionType = "delete" | "reassign" | "edit";
+/** "edit_access": a technician asks to edit a device (one save within 24 hours). */
+export type ApprovalActionType = "delete" | "reassign" | "edit" | "edit_access";
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 
 export interface ApprovalRequest {
@@ -83,6 +87,8 @@ export interface ApprovalRequest {
   approverEmail?: string;
   decidedAt?: string;
   decisionNotes?: string;
+  /** edit_access: set when the approved edit was saved (the grant is single use). */
+  consumedAt?: string;
 }
 
 export interface Asset {

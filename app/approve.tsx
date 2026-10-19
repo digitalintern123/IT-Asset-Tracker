@@ -13,10 +13,13 @@ import type { Asset } from "@/types/asset";
 
 type Phase = "ready" | "working" | "done" | "error";
 
+const ACCESS_NOTE =
+  "SharePoint access for the user could not be set; run Settings → Sync device access (details in Diagnostics).";
+
 /**
- * Approval matrix: opened from the "Approval required" email. An IT Asset
- * Admin signs in and approves or rejects a hand-over (or a whole import
- * batch). Nothing happens on page load — mail scanners that open links can't
+ * Approval matrix: opened from the "Approval required" email. A member of
+ * IT-Asset Approver signs in and approves or rejects a hand-over, a
+ * technician's edit request, or a whole import batch. Nothing happens on page load — mail scanners that open links can't
  * approve anything; the admin has to press the button.
  */
 export default function ApproveScreen() {
@@ -39,10 +42,11 @@ export default function ApproveScreen() {
     ? assets.filter((a) => a.approvalRequest?.batchId === batchId && a.approvalRequest.status === "pending")
     : [];
   const req = asset?.approvalRequest;
-  const isAdmin = user?.role === "admin";
+  const isApprover = !!user?.isApprover;
+  const isEdit = req?.action === "edit_access";
 
   const headerOptions = {
-    title: "Approve hand-over",
+    title: isEdit ? "Approve edit" : "Approve hand-over",
     headerLeft: router.canGoBack() ? undefined : () => <HeaderBackButton />,
   };
 
@@ -56,13 +60,20 @@ export default function ApproveScreen() {
         );
         setMessage(
           `${res.done} hand-over(s) ${approved ? "approved" : "rejected"}` +
-            (res.failed.length ? `; ${res.failed.length} could not be processed (${res.failed[0].error})` : ""),
+            (res.failed.length ? `; ${res.failed.length} could not be processed (${res.failed[0].error})` : "") +
+            (res.access?.failed ? `. ${ACCESS_NOTE}` : ""),
         );
       } else {
-        await resolveApproval(assetId, approved, notes.trim() || undefined);
+        const access = await resolveApproval(assetId, approved, notes.trim() || undefined);
+        const accessFailed = !!access && !access.ok;
         setMessage(
-          approved
-            ? `Approved. ${req?.pendingChanges?.assignee || "The user"} has been sent the hand-over confirmation email.`
+          isEdit
+            ? approved
+              ? `Approved. ${req?.requesterName || "The technician"} has been emailed and can save one change within 24 hours.`
+              : "Rejected. The technician has been told; the device stays as it was."
+            : approved
+            ? `Approved. ${req?.pendingChanges?.assignee || "The user"} has been sent the hand-over confirmation email.` +
+              (accessFailed ? ` ${ACCESS_NOTE}` : "")
             : "Rejected. The requester has been told; the device stays as it was.",
         );
       }
@@ -126,10 +137,10 @@ export default function ApproveScreen() {
         Please open the link from the approval email again.
       </Notice>
     );
-  } else if (!isAdmin) {
+  } else if (!isApprover) {
     body = (
-      <Notice icon="warn" colors={colors} title="Only IT Asset Admins can approve">
-        {`You are signed in as ${user?.email || "a non-admin"}. Hand-overs are approved by members of the IT Asset Admins group.`}
+      <Notice icon="warn" colors={colors} title="Only IT-Asset Approver members can approve">
+        {`You are signed in as ${user?.email || "someone else"}. Requests are approved by members of the IT-Asset Approver group.`}
       </Notice>
     );
   } else if (phase === "done") {
@@ -176,6 +187,21 @@ export default function ApproveScreen() {
           ? `It was ${req.status}${req.approverName ? ` by ${req.approverName}` : ""}${req.decidedAt ? ` on ${new Date(req.decidedAt).toLocaleString()}` : ""}.`
           : "It has already been decided or replaced by a newer request. Open the device to see its current state."}
       </Notice>
+    );
+  } else if (isEdit) {
+    body = (
+      <View style={card}>
+        <Text style={[styles.title, text]}>Allow this edit?</Text>
+        <Row label="Device" value={`${asset.name} (${asset.id})`} colors={colors} />
+        <Row label="Make / Model" value={[asset.make, asset.model].filter(Boolean).join(" ") || "—"} colors={colors} />
+        <Row label="Serial number" value={asset.serialNumber || "—"} colors={colors} />
+        <Row label="Requested by" value={`${req.requesterName} · ${new Date(req.requestedAt).toLocaleString()}`} colors={colors} />
+        <Row label="Reason for edit" value={req.reason || "—"} colors={colors} />
+        <Text style={[styles.hint, muted]}>
+          If approved, the technician can save one change within 24 hours. A change of user still goes for hand-over approval.
+        </Text>
+        {buttons()}
+      </View>
     );
   } else {
     const pending = req.pendingChanges || {};

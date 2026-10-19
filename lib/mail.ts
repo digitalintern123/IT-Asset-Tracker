@@ -288,7 +288,7 @@ function approvalButtons(approveUrl: string, rejectUrl: string): string {
   return (
     `<p><a href="${escapeHtml(approveUrl)}" style="${btn("#2E7D32")}">Approve</a>` +
     `<a href="${escapeHtml(rejectUrl)}" style="${btn("#C62828")}">Reject</a></p>` +
-    `<p style="font-size:12px;color:#555;">You will be asked to sign in with your Encalm Microsoft 365 account to confirm. Only IT Asset Admins can approve.</p>`
+    `<p style="font-size:12px;color:#555;">You will be asked to sign in with your Encalm Microsoft 365 account to confirm. Only members of IT-Asset Approver can approve.</p>`
   );
 }
 
@@ -412,6 +412,86 @@ export function buildReassignDecisionMail(
       req.decisionNotes ? `Notes: ${req.decisionNotes}` : "",
       "",
       `Current status: ${STATUS_LABELS[asset.status] ?? asset.status}`,
+      "",
+      `Encalm IT Asset Management System`,
+    ]
+      .filter((line, i, arr) => !(line === "" && arr[i - 1] === ""))
+      .join("\n"),
+  };
+}
+
+/** Technician asks to edit a device: Approve / Reject go to the approvers. */
+export function buildEditRequestMail(asset: Asset, req: ApprovalRequest, origin = ""): MailMessage {
+  const target = { assetId: asset.id, requestId: req.id };
+  const approveUrl = approvalLink(origin, target, "approve");
+  const rejectUrl = approvalLink(origin, target, "reject");
+  const rows: [string, string][] = [
+    ["Device", `${asset.name} (${asset.id})`],
+    ["Make / Model", [asset.make, asset.model].filter(Boolean).join(" ") || "—"],
+    ["Serial No.", asset.serialNumber || "—"],
+    ["Requested by", `${req.requesterName}${req.requesterEmail ? ` (${req.requesterEmail})` : ""}`],
+    ["Reason for edit", req.reason || "—"],
+  ];
+  const cell = "border:1px solid #ccc;padding:6px 10px;font-family:Segoe UI,Arial,sans-serif;font-size:14px;";
+  const html = [
+    `<div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#000;">`,
+    `<p>Dear IT Head,</p>`,
+    `<p>${escapeHtml(req.requesterName)} asks to edit this device. If approved, they can save one change within 24 hours. A change of user still needs the hand-over approval.</p>`,
+    `<table style="border-collapse:collapse;margin:12px 0;">`,
+    rows.map(([k, v]) => `<tr><td style="${cell}font-weight:600;">${escapeHtml(k)}</td><td style="${cell}">${escapeHtml(v)}</td></tr>`).join(""),
+    `</table>`,
+    approvalButtons(approveUrl, rejectUrl),
+    `<p>Encalm IT Asset Management System</p>`,
+    `</div>`,
+  ].join("");
+  return {
+    to: cleanRecipients([...MS_CONFIG.APPROVAL_EMAILS]),
+    subject: `[Approval required] Edit ${asset.name} — requested by ${req.requesterName}`,
+    body: [
+      `Dear IT Head,`,
+      "",
+      `${req.requesterName} asks to edit this device (one save within 24 hours if approved):`,
+      "",
+      ...rows.map(([k, v]) => `• ${k}: ${v}`),
+      "",
+      `Approve: ${approveUrl}`,
+      `Reject: ${rejectUrl}`,
+      "",
+      `Encalm IT Asset Management System`,
+    ].join("\n"),
+    html,
+  };
+}
+
+/** Tells the technician their edit request was approved (with the link) or rejected. */
+export function buildEditDecisionMail(
+  asset: Asset,
+  req: ApprovalRequest,
+  approved: boolean,
+  approverName: string,
+  origin = "",
+): MailMessage {
+  const link = `${origin.replace(/\/+$/, "")}/asset/${encodeURIComponent(asset.id)}`;
+  const lines = approved
+    ? [
+        `Your request to edit ${asset.name} (${asset.id}) was APPROVED by ${approverName}.`,
+        `You can edit it now: open the device and press Edit. The approval covers one save within 24 hours.`,
+        `If you change the device's user, the hand-over still goes for approval and the new user is asked to confirm receipt.`,
+        "",
+        `Open the device: ${link}`,
+      ]
+    : [
+        `Your request to edit ${asset.name} (${asset.id}) was REJECTED by ${approverName}.`,
+        `The device stays as it is.`,
+      ];
+  return {
+    to: cleanRecipients([req.requesterEmail]),
+    subject: `[${approved ? "Approved" : "Rejected"}] Edit ${asset.name} (${asset.id})`,
+    body: [
+      `Hello ${req.requesterName},`,
+      "",
+      ...lines,
+      req.decisionNotes ? `Notes: ${req.decisionNotes}` : "",
       "",
       `Encalm IT Asset Management System`,
     ]

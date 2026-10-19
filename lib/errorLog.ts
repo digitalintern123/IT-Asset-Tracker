@@ -11,7 +11,7 @@ import { openMailDraft } from "@/lib/mail";
 
 export interface ErrorLogEntry {
   at: string;
-  source: "crash" | "unhandled" | "sync" | "manual";
+  source: "crash" | "unhandled" | "sync" | "access" | "manual";
   message: string;
   stack?: string;
   page?: string;

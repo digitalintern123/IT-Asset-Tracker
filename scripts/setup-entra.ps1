@@ -6,22 +6,23 @@
   Run once by a tenant admin (Global Admin, or Application Admin + Groups Admin
   + Exchange Admin). Safe to run again: every step checks what already exists.
 
-    1. App roles Asset.Admin / Asset.Technician / Asset.Viewer on the app registration
-    2. Security groups "IT Asset Admins" and "IT Asset Technicians" (+ optional members)
+    1. App roles Asset.Admin / Asset.Technician / Asset.Viewer / Asset.Approver on the app registration
+    2. Security groups "IT Asset Admins", "IT Asset Technicians" and "IT-Asset Approver" (+ optional members)
     3. Group -> app role assignments; "Assignment required" = No (all staff can sign in)
-    4. Delegated Microsoft Graph permissions + admin consent
+    4. Delegated Microsoft Graph permissions + SharePoint AllSites.Manage (per-device
+       access) + admin consent
     5. "Send As" on the IT helpdesk mailbox for the admins group members (Exchange Online)
 
   Use -WhatIf to see what would change without changing anything.
 
 .EXAMPLE
-  ./setup-entra.ps1 -AdminUsers it.head@encalm.com -TechnicianUsers tech1@encalm.com,tech2@encalm.com
+  ./setup-entra.ps1 -AdminUsers it.head@encalm.com -ApproverUsers it.head@encalm.com -TechnicianUsers tech1@encalm.com,tech2@encalm.com
 
 .NOTES
   Needs: Install-Module Microsoft.Graph -Scope CurrentUser
          Install-Module ExchangeOnlineManagement -Scope CurrentUser   (unless -SkipExchange)
-  SharePoint list permissions (item-level / unique permissions) are not covered:
-  follow docs/DEPLOY.md for those.
+  SharePoint list permissions are not covered: follow docs/DEPLOY.md (the
+  IT-Asset Approver group needs Full Control on the IT Asset Register list).
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
@@ -29,14 +30,19 @@ param(
   [string]$ClientId = "96823f1a-bdb9-49c5-8461-d181438c74e3",
   [string]$AdminGroupName = "IT Asset Admins",
   [string]$TechnicianGroupName = "IT Asset Technicians",
+  [string]$ApproverGroupName = "IT-Asset Approver",
   [string[]]$AdminUsers = @(),
+  [string[]]$ApproverUsers = @(),
   [string[]]$TechnicianUsers = @(),
   [string]$HelpdeskMailbox = "corpit.helpdesk@encalm.com",
+  [string]$SharePointHost = "https://encalmit.sharepoint.com",
   [switch]$SkipExchange
 )
 
 $ErrorActionPreference = "Stop"
 $GraphAppId = "00000003-0000-0000-c000-000000000000"
+$SharePointAppId = "00000003-0000-0ff1-ce00-000000000000"
+$SharePointScopes = @("AllSites.Manage")
 $DelegatedScopes = @(
   "User.Read", "User.ReadBasic.All", "Sites.ReadWrite.All", "Sites.Manage.All",
   "Mail.Send", "Mail.Send.Shared", "offline_access", "openid", "profile", "email"
@@ -44,7 +50,8 @@ $DelegatedScopes = @(
 $Roles = @(
   @{ Value = "Asset.Admin";      DisplayName = "IT Administrator"; Description = "Full access to the IT Asset Tracker" },
   @{ Value = "Asset.Technician"; DisplayName = "IT Technician";    Description = "Create and edit assets" },
-  @{ Value = "Asset.Viewer";     DisplayName = "Auditor / Viewer"; Description = "Read-only access" }
+  @{ Value = "Asset.Viewer";     DisplayName = "Auditor / Viewer"; Description = "Read-only access" },
+  @{ Value = "Asset.Approver";   DisplayName = "IT Asset Approver"; Description = "Approves hand-overs and edit requests" }
 )
 
 function Step($text) { Write-Host "`n== $text" -ForegroundColor Cyan }
@@ -113,13 +120,15 @@ function Ensure-Members($group, [string[]]$upns) {
 }
 $adminGroup = Ensure-Group $AdminGroupName
 $techGroup = Ensure-Group $TechnicianGroupName
+$approverGroup = Ensure-Group $ApproverGroupName
 Ensure-Members $adminGroup $AdminUsers
 Ensure-Members $techGroup $TechnicianUsers
+Ensure-Members $approverGroup $ApproverUsers
 
 # --- 3. Role assignments + sign-in for everyone -----------------------------
 Step "App role assignments"
 $assigned = @(Get-MgServicePrincipalAppRoleAssignedTo -ServicePrincipalId $sp.Id -All)
-foreach ($pair in @(@($adminGroup, "Asset.Admin"), @($techGroup, "Asset.Technician"))) {
+foreach ($pair in @(@($adminGroup, "Asset.Admin"), @($techGroup, "Asset.Technician"), @($approverGroup, "Asset.Approver"))) {
   $group = $pair[0]; $roleId = RoleId $pair[1]
   if (-not $group -or -not $roleId) { continue }
   if ($assigned | Where-Object { $_.PrincipalId -eq $group.Id -and $_.AppRoleId -eq $roleId }) {
@@ -180,6 +189,43 @@ if ($grant) {
   Done "admin consent granted"
 }
 
+# --- 4b. SharePoint AllSites.Manage (per-device access for staff) -----------
+Step "SharePoint delegated permission AllSites.Manage"
+$spoSp = Get-MgServicePrincipal -Filter "appId eq '$SharePointAppId'"
+if (-not $spoSp) { throw "SharePoint Online service principal not found in the tenant." }
+$app = Get-MgApplication -ApplicationId $app.Id
+$spoIds = @{}
+foreach ($s in $SharePointScopes) {
+  $p = $spoSp.Oauth2PermissionScopes | Where-Object { $_.Value -eq $s }
+  if (-not $p) { throw "SharePoint permission $s not found" }
+  $spoIds[$s] = $p.Id
+}
+$rra = @($app.RequiredResourceAccess | Where-Object { $_.ResourceAppId -ne $SharePointAppId })
+$existingSpo = $app.RequiredResourceAccess | Where-Object { $_.ResourceAppId -eq $SharePointAppId }
+$access = @($existingSpo.ResourceAccess | ForEach-Object { @{ Id = $_.Id; Type = $_.Type } })
+$added = @($SharePointScopes | Where-Object { -not ($access | Where-Object { $_.Id -eq $spoIds[$_] }) })
+if ($added.Count -gt 0) {
+  if ($PSCmdlet.ShouldProcess($app.DisplayName, "Add SharePoint permissions: $($added -join ', ')")) {
+    foreach ($s in $added) { $access += @{ Id = $spoIds[$s]; Type = "Scope" } }
+    $rra += @{ ResourceAppId = $SharePointAppId; ResourceAccess = $access }
+    Update-MgApplication -ApplicationId $app.Id -RequiredResourceAccess $rra
+    Done "added SharePoint $($added -join ', ')"
+  }
+} else { Skip "SharePoint permissions already listed" }
+$spoGrant = Get-MgOauth2PermissionGrant -Filter "clientId eq '$($sp.Id)' and consentType eq 'AllPrincipals' and resourceId eq '$($spoSp.Id)'" |
+  Select-Object -First 1
+if ($spoGrant) {
+  $have = @($spoGrant.Scope -split " " | Where-Object { $_ })
+  $missing = @($SharePointScopes | Where-Object { $have -notcontains $_ })
+  if ($missing.Count -gt 0 -and $PSCmdlet.ShouldProcess("SharePoint", "Admin consent for $($missing -join ', ')")) {
+    Update-MgOauth2PermissionGrant -OAuth2PermissionGrantId $spoGrant.Id -Scope (($have + $missing) -join " ")
+    Done "SharePoint consent extended: $($missing -join ', ')"
+  } elseif ($missing.Count -eq 0) { Skip "SharePoint consent already covers everything" }
+} elseif ($PSCmdlet.ShouldProcess("SharePoint", "Grant admin consent")) {
+  New-MgOauth2PermissionGrant -ClientId $sp.Id -ConsentType "AllPrincipals" -ResourceId $spoSp.Id -Scope ($SharePointScopes -join " ") | Out-Null
+  Done "SharePoint admin consent granted"
+}
+
 # --- 5. Exchange: Send As on the helpdesk mailbox ---------------------------
 if (-not $SkipExchange) {
   Step "Send As on $HelpdeskMailbox"
@@ -187,6 +233,7 @@ if (-not $SkipExchange) {
   $members = @()
   if ($adminGroup) { $members += @(Get-MgGroupMember -GroupId $adminGroup.Id -All) }
   if ($techGroup) { $members += @(Get-MgGroupMember -GroupId $techGroup.Id -All) }
+  if ($approverGroup) { $members += @(Get-MgGroupMember -GroupId $approverGroup.Id -All) }
   $existing = @(Get-RecipientPermission -Identity $HelpdeskMailbox -ErrorAction SilentlyContinue |
     Where-Object { $_.AccessRights -contains "SendAs" } | ForEach-Object { $_.Trustee.ToLower() })
   foreach ($m in ($members | Sort-Object Id -Unique)) {
@@ -204,4 +251,5 @@ if (-not $SkipExchange) {
 Write-Host "`nDone. Next:" -ForegroundColor Cyan
 Write-Host "  - Users sign out and in again to pick up their role."
 Write-Host "  - Sign in as an admin -> Settings -> Test SharePoint Connection -> Fix automatically."
-Write-Host "  - Set the SharePoint list permissions per group (docs/DEPLOY.md)."
+Write-Host "  - Set the SharePoint list permissions per group (docs/DEPLOY.md); IT-Asset Approver needs Full Control."
+Write-Host "  - Sign in as an approver -> Settings -> Sync device access (staff then see their own devices)."

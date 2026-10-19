@@ -30,7 +30,9 @@ import {
 } from "@/lib/assetWorkflow";
 import { applyConfirmations, confirmLink, fetchConfirmations } from "@/lib/confirmations";
 import { resolveAssetConflict } from "@/lib/conflictResolver";
+import { activeEditGrant, needsEditApproval, visibleAssets } from "@/lib/editAccess";
 import { recordError } from "@/lib/errorLog";
+import { ITEM_ACCESS_SCOPE, accessPlan, grantItemRead, revokeItemRead } from "@/lib/itemAccess";
 import {
   MailMessage,
   buildAssignmentConfirmMail,
@@ -38,6 +40,8 @@ import {
   buildReassignDecisionMail,
   buildReassignRequestMail,
   buildImportApprovalMail,
+  buildEditDecisionMail,
+  buildEditRequestMail,
   deliverMail,
 } from "@/lib/mail";
 import { MS_CONFIG, isMsConfigured } from "@/lib/msConfig";
@@ -98,7 +102,12 @@ function newAssignmentRequest(
 }
 
 const PENDING_REQUEST_MESSAGE =
-  "This device already has a request waiting for IT Admin approval. Wait for it to be approved or rejected first.";
+  "This device already has a request waiting for approval. Wait for it to be approved or rejected first.";
+
+const NOT_APPROVER_MESSAGE = "Only members of IT-Asset Approver can approve or reject requests.";
+
+const EDIT_APPROVAL_MESSAGE =
+  "Editing this device needs approval. Press Edit, give the reason and send it for approval; once approved you can save one change within 24 hours.";
 
 const CONFIRMATIONS_UNKNOWN_MESSAGE =
   "Couldn't check whether this device's user has confirmed receipt. Please refresh and try again.";
@@ -118,6 +127,14 @@ export interface UpdateAssetOptions {
   extraMails?: MailMessage[];
   /** Approved import batch: mark new custody as imported, send no user email. */
   imported?: boolean;
+  /** Reassign button: only the custody fields change (always goes for hand-over approval). */
+  handOverOnly?: boolean;
+}
+
+/** Outcome of setting per-device SharePoint access. */
+export interface AccessResult {
+  ok: boolean;
+  error?: string;
 }
 
 const CACHE_KEY = "@encalm/asset_cache_v3";
@@ -249,7 +266,7 @@ interface AssetContextValue {
     input: AssetInput,
     opts?: UpdateAssetOptions
   ) => Promise<Asset | undefined>;
-  deleteAsset: (id: string) => Promise<void>;
+  deleteAsset: (id: string, opts?: { skipPermissionCheck?: boolean }) => Promise<void>;
   reassignAsset: (
     id: string,
     data: {
@@ -266,15 +283,23 @@ interface AssetContextValue {
   resolveApproval: (
     id: string,
     approved: boolean,
-    decisionNotes?: string
-  ) => Promise<void>;
+    decisionNotes?: string,
+    opts?: { skipAccess?: boolean }
+  ) => Promise<AccessResult | void>;
+  /** Technician: ask an IT-Asset Approver for permission to edit a device. */
+  requestEditAccess: (id: string, reason: string) => Promise<Asset | undefined>;
+  /** Give/remove per-device SharePoint Read so staff see only their own devices. */
+  syncDeviceAccess: (
+    ids?: string[],
+    onProgress?: (done: number, total: number) => void
+  ) => Promise<{ done: number; failed: { id: string; error: string }[] }>;
   /** Approve/reject all pending hand-overs of one import batch at once. */
   resolveApprovalBatch: (
     batchId: string,
     approved: boolean,
     decisionNotes?: string,
     onProgress?: (done: number, total: number) => void
-  ) => Promise<{ done: number; failed: { id: string; error: string }[] }>;
+  ) => Promise<{ done: number; failed: { id: string; error: string }[]; access?: { failed: number } }>;
   refresh: () => Promise<void>;
   /** One-time inventory import: creates assets in order, no emails. */
   importAssets: (
@@ -305,7 +330,9 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
   }, [syncError]);
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [isOffline, setIsOffline] = useState(!isNetworkOnline());
-  const { user, getValidAccessToken } = useAuth();
+  const { user, getValidAccessToken, getTokenForScopes } = useAuth();
+  // SharePoint token for per-device permissions (requested once, ~1 hour).
+  const accessTokenRef = useRef<{ token: string; at: number } | null>(null);
 
   const spServiceRef = useRef<SharePointService | null>(null);
 
@@ -481,9 +508,15 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
   }, [user?.accessToken, user?.isDemo, refresh]);
 
   // Multi-key asset lookup
+  // Staff without an app role see only their own devices (SharePoint item
+  // permissions trim the same on the server side).
+  const shownAssets = useMemo(
+    () => visibleAssets(assets, user),
+    [assets, user?.isDemo, user?.seesAll, user?.email]
+  );
   const getAsset = useCallback(
-    (query: string) => assets.find((a) => matchesAsset(a, query)),
-    [assets]
+    (query: string) => shownAssets.find((a) => matchesAsset(a, query)),
+    [shownAssets]
   );
 
   // 4. Create asset (Strict status + Stable ID + Assignment History + Offline queue)
@@ -646,6 +679,19 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       const by = user?.name || "IT Staff";
       const extraEvents: AssetEvent[] = [...(opts?.extraEvents || [])];
       const mails: MailMessage[] = [...(opts?.extraMails || [])];
+
+      // Technicians edit only with an approved edit request (one save within
+      // 24 hours). The Reassign button needs none: the hand-over itself
+      // always goes for approval.
+      const grantRequired = !opts?.skipPermissionCheck && !opts?.approvedBy && needsEditApproval(user);
+      const editGrant = grantRequired ? activeEditGrant(existing, user?.email) : null;
+      if (grantRequired && !editGrant && !(opts?.handOverOnly && needsAssignmentApproval(existing, input))) {
+        throw new Error(EDIT_APPROVAL_MESSAGE);
+      }
+      if (editGrant) {
+        // Used up by this save (a hand-over request below replaces it anyway).
+        input = { ...input, approvalRequest: { ...editGrant, consumedAt: new Date().toISOString() } };
+      }
 
       // 3. Approval matrix: handing the device to a person (issue or
       //    reassign) waits for an IT Asset Admin, whoever asks. Nothing changes
@@ -836,13 +882,41 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         setSyncing(false);
       }
     },
-    [user?.accessToken, user?.isDemo, user?.permissions, user?.role, user?.name, user?.email, assets, getValidAccessToken, updateCache]
+    [user?.accessToken, user?.isDemo, user?.permissions, user?.role, user?.name, user?.email, user?.isApprover, assets, getValidAccessToken, updateCache]
+  );
+
+  /**
+   * Per-device SharePoint Read for the current holder; earlier holders lose
+   * theirs. Never throws: failures are logged (Settings → Diagnostics).
+   */
+  const applyDeviceAccess = useCallback(
+    async (asset: Asset | undefined): Promise<AccessResult> => {
+      if (!asset || user?.isDemo) return { ok: true };
+      const plan = accessPlan(asset.assignmentHistory);
+      if (!plan.grant && plan.revoke.length === 0) return { ok: true };
+      try {
+        let cached = accessTokenRef.current;
+        if (!cached || Date.now() - cached.at > 45 * 60 * 1000) {
+          cached = { token: await getTokenForScopes([ITEM_ACCESS_SCOPE]), at: Date.now() };
+          accessTokenRef.current = cached;
+        }
+        const itemId = asset.spItemId || "";
+        for (const email of plan.revoke) await revokeItemRead(cached.token, itemId, email);
+        if (plan.grant) await grantItemRead(cached.token, itemId, plan.grant);
+        return { ok: true };
+      } catch (err: any) {
+        const error = err?.message || "Could not set SharePoint access";
+        recordError("access", `${asset.id}: ${error}`);
+        return { ok: false, error };
+      }
+    },
+    [user?.isDemo, getTokenForScopes]
   );
 
   // 6. Delete asset
   const deleteAsset = useCallback(
-    async (id: string): Promise<void> => {
-      if (user?.permissions && !user.permissions.canDeleteAsset) {
+    async (id: string, opts?: { skipPermissionCheck?: boolean }): Promise<void> => {
+      if (!opts?.skipPermissionCheck && user?.permissions && !user.permissions.canDeleteAsset) {
         throw new Error("Unauthorized: Only IT Administrators can permanently delete assets.");
       }
 
@@ -926,10 +1000,43 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
           assignee: data.newAssignee,
           location: data.location || existing.location,
         },
-        { assigneeEmail: data.assigneeEmail, reason: data.reason }
+        { assigneeEmail: data.assigneeEmail, reason: data.reason, handOverOnly: true }
       );
     },
     [assets, updateAsset]
+  );
+
+  // Technician's edit request: the approvers get an Approve / Reject email.
+  const requestEditAccess = useCallback(
+    async (id: string, reason: string): Promise<Asset | undefined> => {
+      if (user?.permissions && !user.permissions.canRequestApproval) {
+        throw new Error("Unauthorized: Your role does not allow requesting changes.");
+      }
+      const existing = assetsRef.current.find((a) => matchesAsset(a, id));
+      if (!existing) throw new Error(`Asset ${id} not found.`);
+      if (!reason.trim()) throw new Error("Please give the reason for the edit.");
+      if (existing.approvalRequest?.status === "pending") throw new Error(PENDING_REQUEST_MESSAGE);
+      const by = user?.name || "IT Staff";
+      const request: ApprovalRequest = {
+        id: `appr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        action: "edit_access",
+        status: "pending",
+        requesterName: by,
+        requesterEmail: user?.email || "",
+        requestedAt: new Date().toISOString(),
+        reason: reason.trim(),
+      };
+      return await updateAsset(
+        id,
+        { ...toAssetInput(existing), approvalRequest: request },
+        {
+          skipPermissionCheck: true,
+          extraEvents: [makeEvent("edit_requested", { by, notes: request.reason })],
+          extraMails: [buildEditRequestMail(existing, request, appOrigin())],
+        }
+      );
+    },
+    [user?.permissions, user?.name, user?.email, updateAsset]
   );
 
   // 7. Request Action Approval (Delete, Edit, Reassign)
@@ -993,12 +1100,13 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
     async (
       id: string,
       approved: boolean,
-      decisionNotes?: string
-    ): Promise<void> => {
-      // Only IT Asset Admins decide (the approval matrix). The SharePoint list
-      // permissions enforce the same on the server side.
-      if (user?.role !== "admin") {
-        throw new Error("Only IT Asset Admins can approve or reject requests.");
+      decisionNotes?: string,
+      opts?: { skipAccess?: boolean }
+    ): Promise<AccessResult | void> => {
+      // Only members of IT-Asset Approver decide (the approval matrix). The
+      // SharePoint list permissions enforce the same on the server side.
+      if (!user?.isApprover) {
+        throw new Error(NOT_APPROVER_MESSAGE);
       }
       const existing = assetsRef.current.find((a) => matchesAsset(a, id));
       if (!existing || !existing.approvalRequest) {
@@ -1022,7 +1130,30 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       const decisionMail =
         req.action === "reassign" && !req.batchId
           ? [buildReassignDecisionMail(existing, decided, approved, approver)]
+          : req.action === "edit_access"
+          ? [buildEditDecisionMail(existing, decided, approved, approver, appOrigin())]
           : [];
+
+      // Edit request: the decision itself is the grant (approved = one save
+      // within 24 hours by the requester).
+      if (req.action === "edit_access") {
+        await updateAsset(
+          id,
+          { ...toAssetInput(existing), approvalRequest: decided },
+          {
+            skipPermissionCheck: true,
+            extraEvents: [
+              makeEvent(approved ? "edit_approved" : "edit_rejected", {
+                by: approver,
+                approvedBy: approved ? approver : undefined,
+                notes: `Requested by ${req.requesterName}${decisionNotes ? `: ${decisionNotes}` : ""}`,
+              }),
+            ],
+            extraMails: decisionMail,
+          }
+        );
+        return;
+      }
 
       if (!approved) {
         // Rejected: nothing changes except the recorded decision.
@@ -1030,6 +1161,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
           id,
           { ...toAssetInput(existing), approvalRequest: decided },
           {
+            skipPermissionCheck: true,
             extraEvents:
               req.action === "reassign"
                 ? [
@@ -1048,9 +1180,9 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
 
       // Approved: Execute the requested action
       if (req.action === "delete") {
-        await deleteAsset(id);
+        await deleteAsset(id, { skipPermissionCheck: true });
       } else if (req.action === "reassign" && req.pendingChanges) {
-        await updateAsset(
+        const saved = await updateAsset(
           id,
           {
             ...toAssetInput(existing),
@@ -1060,6 +1192,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
             approvalRequest: undefined,
           },
           {
+            skipPermissionCheck: true,
             approvedBy: approver,
             assigneeEmail: req.pendingChanges.assigneeEmail,
             reason: req.reason,
@@ -1075,6 +1208,8 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
             extraMails: decisionMail,
           }
         );
+        // The new user can now read this device in SharePoint; the previous one can't.
+        if (!opts?.skipAccess) return await applyDeviceAccess(saved);
       } else if (req.action === "edit" && req.pendingChanges) {
         await updateAsset(
           id,
@@ -1083,11 +1218,38 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
             ...req.pendingChanges,
             approvalRequest: undefined,
           },
-          { approvedBy: approver }
+          { approvedBy: approver, skipPermissionCheck: true }
         );
       }
     },
-    [assets, user?.name, user?.email, user?.role, updateAsset, deleteAsset]
+    [assets, user?.name, user?.email, user?.isApprover, updateAsset, deleteAsset, applyDeviceAccess]
+  );
+
+  /** Re-apply per-device access (all devices, or the given ones). */
+  const syncDeviceAccess = useCallback(
+    async (
+      ids?: string[],
+      onProgress?: (done: number, total: number) => void
+    ): Promise<{ done: number; failed: { id: string; error: string }[] }> => {
+      if (!user?.isApprover && user?.role !== "admin") {
+        throw new Error("Only IT-Asset Approver members or IT Administrators can set device access.");
+      }
+      const targets = assetsRef.current.filter(
+        (a) => (!ids || ids.some((id) => matchesAsset(a, id))) && (a.assignmentHistory || []).some((r) => r.assigneeEmail)
+      );
+      const failed: { id: string; error: string }[] = [];
+      let done = 0;
+      for (const asset of targets) {
+        const r = await applyDeviceAccess(asset);
+        if (r.ok) done++;
+        else failed.push({ id: asset.id, error: r.error || "Failed" });
+        onProgress?.(done + failed.length, targets.length);
+        // The first failure is usually a missing permission: stop early.
+        if (failed.length === 1 && done === 0) break;
+      }
+      return { done, failed };
+    },
+    [user?.isApprover, user?.role, applyDeviceAccess]
   );
 
   /** Approve or reject every pending request of one import batch. */
@@ -1097,27 +1259,32 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       approved: boolean,
       decisionNotes?: string,
       onProgress?: (done: number, total: number) => void
-    ): Promise<{ done: number; failed: { id: string; error: string }[] }> => {
-      if (user?.role !== "admin") {
-        throw new Error("Only IT Asset Admins can approve or reject requests.");
+    ): Promise<{ done: number; failed: { id: string; error: string }[]; access?: { failed: number } }> => {
+      if (!user?.isApprover) {
+        throw new Error(NOT_APPROVER_MESSAGE);
       }
       const ids = assetsRef.current
         .filter((a) => a.approvalRequest?.batchId === batchId && a.approvalRequest.status === "pending")
         .map((a) => a.id);
       const failed: { id: string; error: string }[] = [];
       let done = 0;
+      const handedOver: string[] = [];
       for (const id of ids) {
         try {
-          await resolveApproval(id, approved, decisionNotes);
+          await resolveApproval(id, approved, decisionNotes, { skipAccess: true });
           done++;
+          handedOver.push(id);
         } catch (err: any) {
           failed.push({ id, error: err?.message || "Failed" });
         }
         onProgress?.(done + failed.length, ids.length);
       }
-      return { done, failed };
+      if (!approved || handedOver.length === 0) return { done, failed };
+      // Then give each user access to their device (one pass).
+      const access = await syncDeviceAccess(handedOver);
+      return { done, failed, access: { failed: handedOver.length - access.done } };
     },
-    [user?.role, resolveApproval]
+    [user?.isApprover, resolveApproval, syncDeviceAccess]
   );
 
   const importAssets = useCallback(
@@ -1250,7 +1417,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<AssetContextValue>(
     () => ({
-      assets,
+      assets: shownAssets,
       loaded,
       syncing,
       syncError,
@@ -1262,14 +1429,16 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       deleteAsset,
       reassignAsset,
       requestApproval,
+      requestEditAccess,
       resolveApproval,
       resolveApprovalBatch,
+      syncDeviceAccess,
       refresh,
       importAssets,
       sendConfirmationRequest,
     }),
     [
-      assets,
+      shownAssets,
       loaded,
       syncing,
       syncError,
@@ -1281,8 +1450,10 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       deleteAsset,
       reassignAsset,
       requestApproval,
+      requestEditAccess,
       resolveApproval,
       resolveApprovalBatch,
+      syncDeviceAccess,
       refresh,
       importAssets,
       sendConfirmationRequest,

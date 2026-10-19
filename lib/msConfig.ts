@@ -52,8 +52,9 @@ export const MS_CONFIG = {
   CONFIRMATIONS_LIST_NAME: "Asset Confirmations",
 
   // Approval matrix: who receives "Approval required" emails for every
-  // hand-over (assign / reassign / import). They approve by signing in, and
-  // must be IT Asset Admins (Asset.Admin role) — anyone else is refused.
+  // hand-over (assign / reassign / import) and technician edit request. They
+  // approve by signing in, and must be members of the "IT-Asset Approver"
+  // group (app role Asset.Approver) — anyone else is refused.
   // Put the Head of IT (and deputies) here.
   APPROVAL_EMAILS: ["prasenjit.baidya@encalm.com"],
 

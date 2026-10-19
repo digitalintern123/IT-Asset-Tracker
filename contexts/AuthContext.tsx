@@ -34,6 +34,7 @@ import {
   resolveUserRole,
   getPermissionsForRole,
   parseJwtRoles,
+  roleFlags,
   roleSource,
 } from "@/lib/roles";
 
@@ -50,6 +51,7 @@ function roleFromIdToken(email: string, idToken?: string) {
   return {
     role,
     permissions: getPermissionsForRole(role),
+    ...roleFlags(role, tokenRoles),
     roleSource: roleSource(email, tokenRoles),
     // Raw app roles Microsoft put in the sign-in token (shown in Settings to
     // diagnose role setup; not used for any decision).
@@ -74,6 +76,10 @@ export interface AuthUser {
   roleSource?: string;
   /** App roles exactly as received in the id_token (diagnostics only). */
   tokenRoles?: string[];
+  /** Member of IT-Asset Approver (app role Asset.Approver). */
+  isApprover?: boolean;
+  /** Sees the whole register; staff without an app role see only their own devices. */
+  seesAll?: boolean;
 }
 
 interface AuthContextValue {
@@ -182,7 +188,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const profile = JSON.parse(rawProfile) as AuthUser;
           if (profile.isDemo) {
             const role = profile.role || "admin";
-            setUser({ ...profile, role, permissions: getPermissionsForRole(role), roleSource: roleSource("", [], true) });
+            setUser({
+              ...profile,
+              role,
+              permissions: getPermissionsForRole(role),
+              ...roleFlags(role, [], true),
+              roleSource: roleSource("", [], true),
+            });
           } else {
             // Load credentials from secure storage. The stored role is never
             // trusted: it is re-derived from the signed id_token (viewer if none).
@@ -338,6 +350,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       initials: "ED",
       role: "admin",
       permissions: getPermissionsForRole("admin"),
+      ...roleFlags("admin", [], true),
       isDemo: true,
       roleSource: roleSource("", [], true),
     };
@@ -375,6 +388,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ...prev,
         role,
         permissions: getPermissionsForRole(role),
+        ...roleFlags(role, [], true),
       };
       AsyncStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(storedProfile(updated))).catch(() => {});
       return updated;

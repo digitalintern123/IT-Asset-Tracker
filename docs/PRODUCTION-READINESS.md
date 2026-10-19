@@ -19,7 +19,7 @@ one script plus one click (see below). Once that is done and Settings →
 | Security — code | 8.5/10 | Roles only from the signed Microsoft token; PKCE fails closed; tokens never stored beyond the session; strict CSP, HSTS, no framing; server verifies tokens and roles; extra permission (`Sites.Manage.All`) requested only for the one admin action that needs it. |
 | Security — setup | 8/10 _after_ `setup-entra.ps1` | Script creates app roles, groups, assignments, permissions + consent, Send As. SharePoint list permissions remain a short manual step. **3/10 until run.** |
 | Data integrity | 8.5/10 | Conflicts, offline replay, unique IDs, dates, Notes size limit handled; monthly re-importable backups; SharePoint versioning recommended. |
-| Testing & CI | 9/10 | 380+ unit checks and 90+ browser checks run on every pull request and before every IIS release. |
+| Testing & CI | 9/10 | 450+ unit checks and 120+ browser checks run on every pull request and before every IIS release. |
 | Monitoring & operations | 8/10 | Uptime check every 15 min with alert issue; crash screen with Report to IT; on-device error log for admins; build/commit shown in Settings and `/health`. No hosted error service (needs an account). |
 | Deployment | 9/10 | Render deploys `main`; tested builds only reach IIS via the `iis-deploy` branch. |
 | Dependencies | 7/10 | On the latest Expo SDK 54 patch, PostCSS pinned to a fixed release. Remaining npm advisories are in Expo/Metro build tools (`braces`, `node-forge`, `image-size`) with no fixed release yet; none are in the code shipped to browsers. Re-check at the Expo SDK 55 upgrade. |
@@ -33,6 +33,9 @@ one script plus one click (see below). Once that is done and Settings →
 - [ ] Settings → Test SharePoint Connection → **Fix automatically**.
 - [ ] Set the SharePoint list permissions (DEPLOY.md §5 and *Assignment confirmations*).
 - [ ] Turn on list versioning (IT Asset Register → Versioning settings).
+- [ ] Approver group: app role `Asset.Approver`, group **IT-Asset Approver** (Head of IT) assigned to it; SharePoint **AllSites.Manage** consented (the script does all three).
+- [ ] IT Asset Register permissions: IT-Asset Approver → **Full Control**; no permission for all staff on the list.
+- [ ] Sign in as an approver → Settings → **Sync device access** (staff then see only their own devices).
 - [ ] Send the IT CC addresses (`IT_CC_EMAILS` / `IT_MANAGER_EMAILS` in `lib/msConfig.ts`).
 - [ ] Plesk Git: branch `iis-deploy`, automatic deployment, GitHub webhook.
 - [ ] Optional: repository variable `RENDER_URL` for the uptime check.

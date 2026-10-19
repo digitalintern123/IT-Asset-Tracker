@@ -27,6 +27,7 @@ import {
   flattenEvents,
   registerCsv,
   registerJson,
+  statusOverview,
   toCsv,
 } from "@/lib/reports";
 import type { AssetEventType, AssetStatus } from "@/types/asset";
@@ -96,19 +97,28 @@ export default function ReportsScreen() {
 
   const allRows = useMemo(() => flattenEvents(assets), [assets]);
   const rows = useMemo(() => filterRows(allRows, filter), [allRows, filter]);
+  const overview = useMemo(() => statusOverview(assets), [assets]);
+  const isAdmin = user?.role === "admin";
 
-  if (user?.role !== "admin") {
+  // The IT team (technicians, approvers, admins) sees the logs; exports and
+  // backups stay with IT Administrators.
+  if (!user || (user.role === "viewer" && !user.isApprover)) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]}>
         <Stack.Screen options={headerOptions} />
         <Lock size={28} color={colors.mutedForeground} strokeWidth={1.8} />
-        <Text style={[styles.emptyTitle, { color: colors.foreground }]}>IT Admins only</Text>
+        <Text style={[styles.emptyTitle, { color: colors.foreground }]}>IT team only</Text>
         <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-          Report logs are available to IT Administrators.
+          Report logs are available to IT Technicians, approvers and IT Administrators.
         </Text>
       </View>
     );
   }
+
+  const ago = (iso: string) => {
+    const h = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 3600000));
+    return h < 48 ? `${h} h ago` : `${Math.round(h / 24)} days ago`;
+  };
 
   const set = (patch: Partial<ReportFilter>) => setFilter((f) => ({ ...f, ...patch }));
 
@@ -149,10 +159,50 @@ export default function ReportsScreen() {
         contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24, gap: 10 }}
         ListHeaderComponent={
           <View style={{ gap: 10, marginBottom: 6 }}>
+            <View style={[styles.panel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.panelTitle, { color: colors.foreground }]}>
+                Pending approvals ({overview.pending.length})
+              </Text>
+              {overview.pending.length === 0 ? (
+                <Text style={[styles.meta, { color: colors.mutedForeground }]}>Nothing waiting for approval.</Text>
+              ) : (
+                overview.pending.slice(0, 50).map((p) => (
+                  <Pressable key={p.assetId} onPress={() => router.push(`/asset/${p.assetId}`)} style={styles.panelRow}>
+                    <Text style={[styles.device, { color: colors.foreground }]}>
+                      {p.kind}: {p.device} <Text style={{ color: colors.mutedForeground }}>{p.detail}</Text>
+                    </Text>
+                    <Text style={[styles.meta, { color: colors.mutedForeground }]}>
+                      {`By ${p.requester} · ${ago(p.requestedAt)}`}
+                    </Text>
+                  </Pressable>
+                ))
+              )}
+            </View>
+            <View style={[styles.panel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.panelTitle, { color: colors.foreground }]}>
+                Awaiting user confirmation ({overview.awaiting.length})
+              </Text>
+              {overview.awaiting.length === 0 ? (
+                <Text style={[styles.meta, { color: colors.mutedForeground }]}>Every hand-over is confirmed.</Text>
+              ) : (
+                overview.awaiting.slice(0, 50).map((w) => (
+                  <Pressable key={w.assetId} onPress={() => router.push(`/asset/${w.assetId}`)} style={styles.panelRow}>
+                    <Text style={[styles.device, { color: colors.foreground }]}>
+                      {w.device} → {w.user}
+                    </Text>
+                    <Text style={[styles.meta, { color: colors.mutedForeground }]}>
+                      {`${w.email} · waiting ${w.days} day${w.days === 1 ? "" : "s"}`}
+                    </Text>
+                  </Pressable>
+                ))
+              )}
+            </View>
+
             <View style={styles.headerRow}>
               <Text style={[styles.count, { color: colors.foreground }]}>
                 {rows.length} of {allRows.length} events
               </Text>
+              {isAdmin ? (
               <Pressable
                 onPress={() => exportCsv(toCsv(rows))}
                 disabled={rows.length === 0}
@@ -164,7 +214,9 @@ export default function ReportsScreen() {
                 <Download size={14} color="#FFFFFF" strokeWidth={2} />
                 <Text style={styles.exportText}>Download CSV</Text>
               </Pressable>
+              ) : null}
             </View>
+            {isAdmin ? (
             <View style={[styles.headerRow, { justifyContent: "flex-start", flexWrap: "wrap" }]}>
               <Text style={{ color: colors.mutedForeground, fontSize: 12, flexBasis: "100%" }}>
                 Backup (all {assets.length} devices) — keep a copy every month:
@@ -192,6 +244,7 @@ export default function ReportsScreen() {
                 <Text style={styles.exportText}>Full backup (JSON)</Text>
               </Pressable>
             </View>
+            ) : null}
 
             <TextInput
               placeholder="Search device, asset ID, user…"
@@ -268,6 +321,9 @@ const styles = StyleSheet.create({
   chipDot: { width: 8, height: 8, borderRadius: 4 },
   chipText: { fontFamily: "Inter_500Medium", fontSize: 12 },
   row: { borderWidth: 1, borderRadius: 12, padding: 12, gap: 3 },
+  panel: { borderWidth: 1, borderRadius: 12, padding: 12, gap: 8 },
+  panelTitle: { fontFamily: "Inter_600SemiBold", fontSize: 14 },
+  panelRow: { gap: 2 },
   rowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 },
   event: { fontFamily: "Inter_600SemiBold", fontSize: 14 },
   date: { fontFamily: "Inter_400Regular", fontSize: 12 },

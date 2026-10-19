@@ -97,6 +97,38 @@ export const ROLE_CLAIMS: Record<string, UserRole> = {
   viewer: "viewer",
 };
 
+/**
+ * Extra app roles that are flags, not a rank. `Asset.Approver` is assigned to
+ * the "IT-Asset Approver" group: its members approve hand-overs and edit
+ * requests. Keep in sync with APPROVER_CLAIMS in server/serve-web.js.
+ */
+export const APPROVER_CLAIMS = ["asset.approver", "approver"];
+/** An explicit Auditor / Viewer role sees the whole register (read-only). */
+export const AUDITOR_CLAIMS = ["asset.viewer", "viewer"];
+
+function hasClaim(tokenRoles: string[] = [], claims: string[]): boolean {
+  return tokenRoles.some((raw) => claims.includes(String(raw).trim().toLowerCase()));
+}
+
+export interface RoleFlags {
+  /** Member of IT-Asset Approver: decides hand-overs and edit requests. */
+  isApprover: boolean;
+  /** Has the Auditor / Viewer app role (or a higher role): sees every device. */
+  seesAll: boolean;
+}
+
+/**
+ * Flags from the signed token. Staff with no app role only see the devices
+ * issued to them. Demo: the admin also approves; every demo role sees all.
+ */
+export function roleFlags(role: UserRole, tokenRoles: string[] = [], isDemo = false): RoleFlags {
+  if (isDemo) return { isApprover: role === "admin", seesAll: true };
+  return {
+    isApprover: hasClaim(tokenRoles, APPROVER_CLAIMS),
+    seesAll: role !== "viewer" || hasClaim(tokenRoles, AUDITOR_CLAIMS) || hasClaim(tokenRoles, APPROVER_CLAIMS),
+  };
+}
+
 const ROLE_RANK: Record<UserRole, number> = { viewer: 0, technician: 1, admin: 2 };
 
 /** The highest app role in the token's `roles` claim, and which value granted it. */

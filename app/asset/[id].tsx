@@ -1,6 +1,6 @@
 import * as Haptics from "expo-haptics";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   Alert,
   Modal,
@@ -23,8 +23,11 @@ import { HeaderBackButton } from "@/components/HeaderBackButton";
 import {
   AlertCircle,
   Check,
+  Clock,
   LucideIcon,
   Pencil,
+  Printer,
+  Share2,
   ShieldAlert,
   ShieldOff,
   Trash2,
@@ -44,6 +47,8 @@ import {
   sendAssetAssignedNotification,
 } from "@/lib/notify";
 import { isDeleteLocked, openCustodyRecord } from "@/lib/assetWorkflow";
+import { activeEditGrant, editGrantExpiresAt, editState } from "@/lib/editAccess";
+import { printQrLabel, shareQr } from "@/lib/qrLabel";
 import { currentUserEmail } from "@/lib/mail";
 import { parseLocation } from "@/lib/location";
 import type { Asset } from "@/types/asset";
@@ -73,7 +78,7 @@ function isPendingReassign(result: Asset | undefined, requestedAssignee: string)
 }
 
 function showPendingReassignNotice(newAssignee: string) {
-  const msg = `Hand-over to ${newAssignee} has been sent to the IT Head (IT Asset Admins) for approval by email. The device is handed over, and ${newAssignee} asked to confirm receipt, only after it is approved.`;
+  const msg = `Hand-over to ${newAssignee} has been sent to the IT Head (IT-Asset Approver) for approval by email. The device is handed over, and ${newAssignee} asked to confirm receipt, only after it is approved.`;
   if (Platform.OS === "web") window.alert(msg);
   else Alert.alert("Sent for approval", msg);
 }
@@ -90,6 +95,7 @@ export default function AssetDetailScreen() {
     reassignAsset,
     requestApproval,
     resolveApproval,
+    requestEditAccess,
     sendConfirmationRequest,
   } = useAssets();
   const { user } = useAuth();
@@ -112,6 +118,13 @@ export default function AssetDetailScreen() {
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [sendingConfirmation, setSendingConfirmation] = useState(false);
 
+  // Edit request modal (technicians)
+  const [editRequestOpen, setEditRequestOpen] = useState(false);
+  const [editReason, setEditReason] = useState("");
+  const [editRequestSubmitting, setEditRequestSubmitting] = useState(false);
+  // The rendered QR code (web: a DOM node holding the <svg>)
+  const qrBoxRef = useRef<any>(null);
+
   const asset = id ? getAsset(id) : undefined;
 
   if (!asset) {
@@ -123,7 +136,11 @@ export default function AssetDetailScreen() {
         ]}
       >
         <Stack.Screen options={{ title: "Asset" }} />
-        <Text style={{ color: colors.mutedForeground }}>Asset not found.</Text>
+        <Text style={{ color: colors.mutedForeground, textAlign: "center", paddingHorizontal: 24 }}>
+          {user && !user.isDemo && !user.seesAll
+            ? "This device isn't issued to you. You can only see the devices handed over to you."
+            : "Asset not found."}
+        </Text>
       </View>
     );
   }
@@ -132,6 +149,63 @@ export default function AssetDetailScreen() {
   const canDirectDelete = isAdmin;
   // One request at a time: a second one would replace the pending request.
   const requestPending = asset.approvalRequest?.status === "pending";
+  // Technicians edit after an approved edit request (one save within 24 h).
+  const edit = editState(asset, user, !!user?.permissions?.canEditAsset);
+  const grant = edit === "granted" ? activeEditGrant(asset, user?.email) : null;
+  const notice = (title: string, msg: string) => {
+    if (Platform.OS === "web") window.alert(msg);
+    else Alert.alert(title, msg);
+  };
+  const handleEditPress = () => {
+    if (edit === "direct" || edit === "granted") {
+      setEditing(true);
+    } else if (edit === "pending") {
+      notice("Waiting for approval", "Your edit request is waiting for approval. You'll get an email once it is decided.");
+    } else if (requestPending) {
+      notice("Request pending", "This device already has a request waiting for approval. Try again once it is decided.");
+    } else {
+      setEditReason("");
+      setEditRequestOpen(true);
+    }
+  };
+  const handleConfirmEditRequest = async () => {
+    if (!editReason.trim()) {
+      notice("Reason required", "Please give the reason for the edit.");
+      return;
+    }
+    setEditRequestSubmitting(true);
+    try {
+      await requestEditAccess(asset.id, editReason.trim());
+      setEditRequestOpen(false);
+      notice(
+        "Sent for approval",
+        "Your edit request has been sent to the IT-Asset Approver for approval by email. You'll get an email once it is approved; then you can save one change within 24 hours."
+      );
+    } catch (err: any) {
+      notice("Error", err?.message || "Could not send the edit request.");
+    } finally {
+      setEditRequestSubmitting(false);
+    }
+  };
+  const qrSvg = (): SVGElement | null => {
+    const node = qrBoxRef.current;
+    return node && typeof node.querySelector === "function" ? node.querySelector("svg") : null;
+  };
+  const handlePrintLabel = () => {
+    const svg = qrSvg();
+    if (!svg || !printQrLabel(asset, svg)) {
+      notice("Print", "Could not open the print window. Allow pop-ups for this site and try again.");
+    }
+  };
+  const handleShareQr = async () => {
+    const svg = qrSvg();
+    if (!svg) return;
+    try {
+      await shareQr(asset, svg);
+    } catch (err: any) {
+      notice("Share QR", err?.message || "Could not share the QR code.");
+    }
+  };
   // Technicians can't move an Out of Order device, so don't offer it.
   const canReassign =
     !!user?.permissions?.canEditAsset && !requestPending && (asset.status !== "retired" || isAdmin);
@@ -363,6 +437,11 @@ export default function AssetDetailScreen() {
             headerRight: () => null,
           }}
         />
+        {grant ? (
+          <Text style={{ fontSize: 12, color: "#137333", fontFamily: "Inter_600SemiBold", textAlign: "center", paddingTop: 10 }}>
+            {`Approved edit — one save, until ${new Date(editGrantExpiresAt(grant)).toLocaleString()}`}
+          </Text>
+        ) : null}
         <AssetForm
           initial={asset}
           initialAssigneeEmail={currentUserEmail(asset)}
@@ -462,9 +541,11 @@ export default function AssetDetailScreen() {
                 </Pressable>
               ) : null}
 
-              {user?.permissions?.canEditAsset ? (
+              {edit !== "none" ? (
                 <Pressable
-                  onPress={() => setEditing(true)}
+                  onPress={handleEditPress}
+                  accessibilityRole="button"
+                  accessibilityLabel={edit === "request" ? "Edit (needs approval)" : "Edit"}
                   hitSlop={8}
                   style={({ pressed }) => ({
                     flexDirection: "row",
@@ -473,11 +554,15 @@ export default function AssetDetailScreen() {
                     paddingHorizontal: 14,
                     paddingVertical: 7,
                     borderRadius: 50,
-                    backgroundColor: colors.primary,
+                    backgroundColor: edit === "pending" ? colors.mutedForeground : colors.primary,
                     opacity: pressed ? 0.8 : 1,
                   })}
                 >
-                  <Pencil size={13} color="#FFFFFF" strokeWidth={2} />
+                  {edit === "pending" ? (
+                    <Clock size={13} color="#FFFFFF" strokeWidth={2} />
+                  ) : (
+                    <Pencil size={13} color="#FFFFFF" strokeWidth={2} />
+                  )}
                   <Text
                     style={{
                       color: "#FFFFFF",
@@ -485,7 +570,7 @@ export default function AssetDetailScreen() {
                       fontSize: 13,
                     }}
                   >
-                    Edit
+                    {edit === "pending" ? "Edit pending" : "Edit"}
                   </Text>
                 </Pressable>
               ) : null}
@@ -515,6 +600,8 @@ export default function AssetDetailScreen() {
                     ? asset.approvalRequest.batchId
                       ? "HAND-OVER (INVENTORY IMPORT)"
                       : "HAND-OVER"
+                    : asset.approvalRequest.action === "edit_access"
+                    ? "EDIT"
                     : asset.approvalRequest.action.toUpperCase()}{" "}
                   REQUEST
                 </Text>
@@ -554,7 +641,7 @@ export default function AssetDetailScreen() {
               </View>
             </View>
 
-            {isAdmin ? (
+            {user?.isApprover ? (
               <View style={{ flexDirection: "row", gap: 8, marginTop: 12, justifyContent: "flex-end" }}>
                 <Pressable
                   onPress={() => handleResolveApproval(false)}
@@ -593,6 +680,17 @@ export default function AssetDetailScreen() {
                 </Pressable>
               </View>
             ) : null}
+          </View>
+        ) : null}
+
+        {grant ? (
+          <View style={[styles.approvalBanner, { backgroundColor: "#E8F5E9", borderColor: "#C8E6C9" }]}>
+            <Text style={{ fontSize: 13, fontFamily: "Inter_700Bold", color: "#1B5E20" }}>
+              EDIT APPROVED{grant.approverName ? ` BY ${grant.approverName.toUpperCase()}` : ""}
+            </Text>
+            <Text style={{ fontSize: 12, color: "#2E7D32", marginTop: 3, lineHeight: 18 }}>
+              {`You can save one change until ${new Date(editGrantExpiresAt(grant)).toLocaleString()}. Press Edit.`}
+            </Text>
           </View>
         ) : null}
 
@@ -766,7 +864,7 @@ export default function AssetDetailScreen() {
             { backgroundColor: colors.card, borderColor: colors.border },
           ]}
         >
-          <View style={styles.qrWrap}>
+          <View style={styles.qrWrap} ref={qrBoxRef}>
             <QRCode
               value={JSON.stringify({
                 id: asset.id,
@@ -781,6 +879,28 @@ export default function AssetDetailScreen() {
             Print or attach this code to the asset. Scan from the Assets tab to
             jump straight to this record.
           </Text>
+          {Platform.OS === "web" ? (
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <Pressable
+                onPress={handlePrintLabel}
+                accessibilityRole="button"
+                accessibilityLabel="Print label"
+                style={({ pressed }) => [styles.qrBtn, { borderColor: colors.primary, opacity: pressed ? 0.7 : 1 }]}
+              >
+                <Printer size={14} color={colors.primary} strokeWidth={1.8} />
+                <Text style={[styles.qrBtnText, { color: colors.primary }]}>Print label</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleShareQr}
+                accessibilityRole="button"
+                accessibilityLabel="Share QR"
+                style={({ pressed }) => [styles.qrBtn, { borderColor: colors.primary, opacity: pressed ? 0.7 : 1 }]}
+              >
+                <Share2 size={14} color={colors.primary} strokeWidth={1.8} />
+                <Text style={[styles.qrBtnText, { color: colors.primary }]}>Share QR</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       </View>
 
@@ -907,6 +1027,61 @@ export default function AssetDetailScreen() {
               >
                 <Text style={{ color: "#FFFFFF", fontFamily: "Inter_600SemiBold" }}>
                   {reassignSubmitting ? "Reassigning..." : "Confirm Reassignment"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* EDIT REQUEST MODAL (technicians) */}
+      <Modal
+        visible={editRequestOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditRequestOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Pencil size={18} color={colors.primary} strokeWidth={1.8} />
+                <Text style={[styles.modalTitle, { color: colors.foreground }]}>Request to edit</Text>
+              </View>
+              <Pressable onPress={() => setEditRequestOpen(false)} hitSlop={8}>
+                <X size={20} color={colors.mutedForeground} strokeWidth={1.8} />
+              </Pressable>
+            </View>
+
+            <Text style={{ fontSize: 13, color: colors.mutedForeground, marginBottom: 16 }}>
+              Editing <Text style={{ fontFamily: "Inter_600SemiBold", color: colors.foreground }}>{asset.name}</Text> ({asset.id}) needs approval from the IT-Asset Approver. Once approved you get an email and can save one change within 24 hours.
+            </Text>
+
+            <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>REASON FOR EDIT *</Text>
+            <TextInput
+              style={[styles.textInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background, minHeight: 80 }]}
+              placeholder="e.g. Correct the serial number, update accessories"
+              placeholderTextColor={colors.mutedForeground + "88"}
+              value={editReason}
+              onChangeText={setEditReason}
+              multiline
+            />
+
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 20 }}>
+              <Pressable
+                onPress={() => setEditRequestOpen(false)}
+                style={[styles.modalBtn, { borderColor: colors.border, borderWidth: 1 }]}
+              >
+                <Text style={{ color: colors.foreground, fontFamily: "Inter_500Medium" }}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleConfirmEditRequest}
+                disabled={editRequestSubmitting}
+                accessibilityRole="button"
+                style={[styles.modalBtn, { backgroundColor: colors.primary, flex: 1, opacity: editRequestSubmitting ? 0.7 : 1 }]}
+              >
+                <Text style={{ color: "#FFFFFF", fontFamily: "Inter_600SemiBold" }}>
+                  {editRequestSubmitting ? "Sending..." : "Send for approval"}
                 </Text>
               </Pressable>
             </View>
@@ -1127,6 +1302,19 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     padding: 14,
     borderRadius: 12,
+  },
+  qrBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 50,
+    borderWidth: 1,
+  },
+  qrBtnText: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
   },
   qrHint: {
     fontSize: 12,

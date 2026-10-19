@@ -28,7 +28,8 @@ type LucideIconName = string;
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { assets, syncing, syncError, lastSyncedAt, refresh } = useAssets();
+  const { assets, syncing, syncError, lastSyncedAt, refresh, syncDeviceAccess } = useAssets();
+  const [accessProgress, setAccessProgress] = useState<string | null>(null);
   const { user, signOut, setDemoRole, getValidAccessToken, getTokenForScopes } = useAuth();
   const [fixing, setFixing] = useState(false);
   const router = useRouter();
@@ -139,7 +140,7 @@ export default function SettingsScreen() {
         </View>
       ) : null}
 
-      {user?.role === "admin" ? (
+      {user && (user.role !== "viewer" || user.isApprover) ? (
         <Pressable
           onPress={() => router.push("/reports")}
           style={({ pressed }) => [
@@ -158,7 +159,9 @@ export default function SettingsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={[styles.summaryTitle, { color: colors.foreground }]}>Report logs</Text>
             <Text style={[styles.summarySub, { color: colors.mutedForeground }]}>
-              Device history, approvals and CSV export
+              {user.role === "admin"
+                ? "Pending approvals, confirmations, device history and CSV export"
+                : "Pending approvals, confirmations and device history"}
             </Text>
           </View>
           <ChevronRight size={18} color={colors.mutedForeground} strokeWidth={1.8} />
@@ -472,6 +475,12 @@ export default function SettingsScreen() {
             sublabel={
               `${ROLE_DESCRIPTIONS[user.role || "viewer"]}` +
               (user.roleSource ? `\nFrom: ${user.roleSource}` : "") +
+              `\nIT-Asset Approver: ${user.isApprover ? "Yes — you approve hand-overs and edit requests" : "No"}` +
+              (user.role === "viewer" && !user.isDemo
+                ? user.seesAll
+                  ? "\nSees: the whole register (Auditor, read-only)"
+                  : "\nSees: only the devices issued to you"
+                : "") +
               (user.isDemo
                 ? ""
                 : `\nRoles in your Microsoft sign-in: ${user.tokenRoles?.length ? user.tokenRoles.join(", ") : "none"}`) +
@@ -571,6 +580,34 @@ export default function SettingsScreen() {
             colors={colors}
             onPress={() => signOut()}
             right={<ChevronRight size={16} color={colors.primary} strokeWidth={1.8} />}
+          />
+        ) : null}
+        {user && !user.isDemo && (user.isApprover || user.role === "admin") ? (
+          <Row
+            icon="lock"
+            label="Sync device access"
+            sublabel={
+              accessProgress ||
+              "Give each device's current user read access to their own device in SharePoint (and remove earlier users). Run once after setup, and after imports."
+            }
+            colors={colors}
+            onPress={async () => {
+              if (accessProgress) return;
+              setAccessProgress("Starting…");
+              try {
+                const res = await syncDeviceAccess(undefined, (d, t) => setAccessProgress(`Setting access ${d} of ${t}…`));
+                notice(
+                  "Sync device access",
+                  res.failed.length
+                    ? `${res.done} device(s) done; failed: ${res.failed[0].error}. Check that you have Full Control on the IT Asset Register list and that SharePoint AllSites.Manage has admin consent (docs/DEPLOY.md).`
+                    : `Done: ${res.done} device(s).`
+                );
+              } catch (err: any) {
+                notice("Sync device access", err?.message || "Failed");
+              } finally {
+                setAccessProgress(null);
+              }
+            }}
           />
         ) : null}
         {user ? (

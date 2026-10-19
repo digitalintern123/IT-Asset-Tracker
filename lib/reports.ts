@@ -4,6 +4,7 @@
  */
 
 import { STATUS_LABELS } from "@/constants/categories";
+import { openCustodyRecord } from "@/lib/assetWorkflow";
 import type { Asset, AssetEventType, AssetStatus } from "@/types/asset";
 
 export const EVENT_LABELS: Record<AssetEventType, string> = {
@@ -15,7 +16,75 @@ export const EVENT_LABELS: Record<AssetEventType, string> = {
   reassign_approved: "Hand-over approved",
   reassign_rejected: "Hand-over rejected",
   confirmed: "Receipt confirmed by user",
+  edit_requested: "Edit requested (awaiting approver)",
+  edit_approved: "Edit approved (one save, 24 h)",
+  edit_rejected: "Edit rejected",
 };
+
+const REQUEST_LABELS: Record<string, string> = {
+  reassign: "Hand-over",
+  edit_access: "Edit",
+  delete: "Deletion",
+  edit: "Change",
+};
+
+export interface PendingApprovalRow {
+  assetId: string;
+  device: string;
+  kind: string;
+  detail: string;
+  requester: string;
+  requestedAt: string;
+}
+
+export interface AwaitingConfirmationRow {
+  assetId: string;
+  device: string;
+  user: string;
+  email: string;
+  since: string;
+  days: number;
+}
+
+/** Live status for the IT team: requests waiting for approval, hand-overs not yet confirmed. */
+export function statusOverview(
+  assets: Asset[],
+  now = Date.now(),
+): { pending: PendingApprovalRow[]; awaiting: AwaitingConfirmationRow[] } {
+  const pending: PendingApprovalRow[] = [];
+  const awaiting: AwaitingConfirmationRow[] = [];
+  for (const a of assets) {
+    const req = a.approvalRequest;
+    if (req?.status === "pending") {
+      pending.push({
+        assetId: a.id,
+        device: a.name,
+        kind: REQUEST_LABELS[req.action] ?? req.action,
+        detail:
+          req.action === "reassign"
+            ? `to ${req.pendingChanges?.assignee || "—"}${req.batchId ? " (inventory import)" : ""}`
+            : req.reason || "",
+        requester: req.requesterName,
+        requestedAt: req.requestedAt,
+      });
+    }
+    const open = openCustodyRecord(a);
+    if (open && open.assigneeEmail && !open.confirmedAt && !open.imported && (a.status === "in_use" || a.status === "maintenance")) {
+      const t = new Date(open.assignedAt).getTime();
+      awaiting.push({
+        assetId: a.id,
+        device: a.name,
+        user: open.assignee,
+        email: open.assigneeEmail,
+        since: open.assignedAt,
+        days: Number.isFinite(t) ? Math.max(0, Math.floor((now - t) / 86400000)) : 0,
+      });
+    }
+  }
+  pending.sort((x, y) => x.requestedAt.localeCompare(y.requestedAt));
+  awaiting.sort((x, y) => y.days - x.days);
+  return { pending, awaiting };
+}
 
 export interface ReportRow {
   eventId: string;

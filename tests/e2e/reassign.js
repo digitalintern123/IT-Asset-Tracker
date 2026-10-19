@@ -29,7 +29,7 @@ const { chromium } = require("playwright");
   await page.goto("http://localhost:10000/settings", { waitUntil: "networkidle" }); await page.waitForTimeout(800);
   await page.getByText("technician", { exact: true }).click(); await page.waitForTimeout(400);
   await page.goto(`http://localhost:10000/approve?asset=ENC-LAP-2026-0001&request=${reqId}`, { waitUntil: "networkidle" }); await page.waitForTimeout(1200);
-  check("technician can't approve", (await page.locator("body").innerText()).includes("Only IT Asset Admins can approve") && (await page.getByRole("button", { name: "Approve", exact: true }).count()) === 0);
+  check("technician can't approve", (await page.locator("body").innerText()).includes("Only IT-Asset Approver members can approve") && (await page.getByRole("button", { name: "Approve", exact: true }).count()) === 0);
   await page.goto("http://localhost:10000/settings", { waitUntil: "networkidle" }); await page.waitForTimeout(800);
   await page.getByText("admin", { exact: true }).click(); await page.waitForTimeout(400);
   await page.goto(`http://localhost:10000/approve?asset=ENC-LAP-2026-0001&request=${reqId}&decision=approve`, { waitUntil: "networkidle" }); await page.waitForTimeout(1500);

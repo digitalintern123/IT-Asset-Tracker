@@ -45,6 +45,13 @@ function roleForClaims(roles, email) {
   return best;
 }
 
+// Members of IT-Asset Approver (app role Asset.Approver) apply approved
+// changes. Must match APPROVER_CLAIMS in lib/roles.ts.
+const APPROVER_CLAIMS = ["asset.approver", "approver"];
+function isApproverClaim(roles) {
+  return (Array.isArray(roles) ? roles : []).some((r) => APPROVER_CLAIMS.includes(String(r).trim().toLowerCase()));
+}
+
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
@@ -250,6 +257,7 @@ const server = http.createServer(async (req, res) => {
       // Role and email are trusted only from a signature-verified id_token.
       // The bearer is a Graph access token, which cannot be verified here.
       let callerRole = "viewer";
+      let callerIsApprover = false;
       if (userToken) {
         let payload;
         try {
@@ -267,6 +275,7 @@ const server = http.createServer(async (req, res) => {
           ? ""
           : String(payload.preferred_username || payload.upn || payload.email || "").toLowerCase();
         callerRole = roleForClaims(payload.roles, email);
+        callerIsApprover = isApproverClaim(payload.roles);
       }
 
       try {
@@ -300,7 +309,7 @@ const server = http.createServer(async (req, res) => {
             sendJson(res, 401, { error: "Unauthorized: Microsoft 365 sign-in required." });
             return;
           }
-          if (callerRole === "viewer") {
+          if (callerRole === "viewer" && !callerIsApprover) {
             sendJson(res, 403, { error: "Forbidden: Viewer role cannot modify assets." });
             return;
           }
@@ -316,7 +325,8 @@ const server = http.createServer(async (req, res) => {
             sendJson(res, 401, { error: "Unauthorized: Microsoft 365 sign-in required." });
             return;
           }
-          if (callerRole !== "admin") {
+          // Approvers apply an approved deletion request.
+          if (callerRole !== "admin" && !callerIsApprover) {
             sendJson(res, 403, { error: "Forbidden: Only IT Administrators can permanently delete assets." });
             return;
           }
