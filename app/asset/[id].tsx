@@ -137,7 +137,7 @@ export default function AssetDetailScreen() {
       >
         <Stack.Screen options={{ title: "Asset" }} />
         <Text style={{ color: colors.mutedForeground, textAlign: "center", paddingHorizontal: 24 }}>
-          {user && !user.isDemo && !user.seesAll
+          {user && !user.seesAll
             ? "This device isn't issued to you. You can only see the devices handed over to you."
             : "Asset not found."}
         </Text>
@@ -218,8 +218,6 @@ export default function AssetDetailScreen() {
           ? "Confirmation request emailed to the user."
           : outcome === "draft"
           ? "A pre-filled email opened — please send it."
-          : user?.isDemo
-          ? "Demo Mode doesn't send emails."
           : "Could not send the email.";
       if (Platform.OS === "web") window.alert(msg);
       else Alert.alert("Confirmation request", msg);

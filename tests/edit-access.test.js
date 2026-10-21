@@ -24,7 +24,7 @@ ok("admin is not an approver by itself", !flags(["Asset.Admin"]).isApprover && f
 ok("Asset.Viewer (auditor) sees all", flags(["Asset.Viewer"]).seesAll && !flags(["Asset.Viewer"]).isApprover);
 ok("technician sees all", flags(["Asset.Technician"]).seesAll);
 ok("staff (no role) sees only own", !flags([]).seesAll && !flags([]).isApprover);
-ok("demo: admin approves, everyone sees all", R.roleFlags("admin", [], true).isApprover && !R.roleFlags("technician", [], true).isApprover && R.roleFlags("viewer", [], true).seesAll);
+ok("admin + approver claims: both flags", flags(["Asset.Admin", "Asset.Approver"]).isApprover && flags(["Asset.Admin", "Asset.Approver"]).seesAll);
 const src = fs.readFileSync(path.join(repo, "server/serve-web.js"), "utf8");
 const serverApprover = new Function(src.slice(src.indexOf("const APPROVER_CLAIMS"), src.indexOf("\n}\n", src.indexOf("function isApproverClaim")) + 3) + "\nreturn { APPROVER_CLAIMS, isApproverClaim };")();
 ok("server APPROVER_CLAIMS identical to client", JSON.stringify(serverApprover.APPROVER_CLAIMS) === JSON.stringify(R.APPROVER_CLAIMS));
@@ -53,7 +53,7 @@ const legacy = { id: "C", name: "c", status: "in_use", assignee: "neha@encalm.co
 const other = { id: "D", name: "d", status: "in_use", assignee: "Raj", assignmentHistory: [{ id: "h", assignee: "Raj", assigneeEmail: "raj@encalm.com", assignedAt: "x" }] };
 const list = [mine, returned, legacy, other];
 ok("staff sees only open custody + legacy email assignee", JSON.stringify(E.visibleAssets(list, { role: "viewer", email: "NEHA@encalm.com", seesAll: false }).map((a) => a.id)) === '["A","C"]');
-ok("auditor/IT/demo/signed-out see all", E.visibleAssets(list, { seesAll: true }).length === 4 && E.visibleAssets(list, { isDemo: true }).length === 4 && E.visibleAssets(list, null).length === 4);
+ok("auditor/IT/signed-out see all", E.visibleAssets(list, { seesAll: true }).length === 4 && E.visibleAssets(list, null).length === 4);
 ok("staff with no email sees nothing", E.visibleAssets(list, { role: "viewer", seesAll: false }).length === 0);
 
 // --- emails --------------------------------------------------------------

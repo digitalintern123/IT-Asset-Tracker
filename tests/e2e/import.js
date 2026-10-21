@@ -1,17 +1,17 @@
 const { chromium } = require("playwright");
+const { mockBackend, signIn } = require("./mock");
 const path = require("path");
 const OUT = path.join(__dirname, "../../test-results"), SAMPLE = path.join(__dirname, "../fixtures/inventory-sample.xlsx");
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined });
   const page = await browser.newPage({ viewport: { width: 1000, height: 1600 } });
   const errors = []; page.on("pageerror", (e) => { if (!/jsdelivr/.test(e.message)) errors.push(e.message); });
-  const mails = []; page.on("request", (r) => { if (/sendMail|^mailto:/.test(r.url())) mails.push(r.url()); });
+  const backend = await mockBackend(page.context());
+  const drafts = []; page.on("request", (r) => { if (/^mailto:/.test(r.url())) drafts.push(r.url()); });
   page.on("dialog", async (d) => { console.log("DIALOG:", d.message()); await d.accept(); });
   const check = (n, c, x = "") => console.log(`${c ? "PASS" : "FAIL"} ${n} ${x}`);
   const body = () => page.locator("body").innerText();
-  await page.goto("http://localhost:10000/login", { waitUntil: "networkidle" });
-  await page.getByText("Explore in Demo Mode").click(); await page.waitForTimeout(1800);
-  await page.goto("http://localhost:10000/settings", { waitUntil: "networkidle" }); await page.waitForTimeout(1000);
+  await signIn(page, "admin", "/settings");
   check("settings shows Import from Excel (admin)", (await body()).includes("Import from Excel"));
   await page.getByText("Import from Excel", { exact: true }).click(); await page.waitForTimeout(1200);
   check("navigated to /import", new URL(page.url()).pathname === "/import", page.url());
@@ -24,6 +24,10 @@ const OUT = path.join(__dirname, "../../test-results"), SAMPLE = path.join(__dir
   await page.getByText("Import 3 assets").click(); await page.waitForTimeout(3000);
   t = await body();
   check("finished summary", t.includes("Import finished"), t.slice(0, 300));
+  check("saved to SharePoint (backend)", ["GOAEHPL-NB001", "GOAEHPL-NB002", "GOAEHPL-NB004"].every((h) => [...backend.store.values()].some((a) => a.name === h)));
+  await page.waitForTimeout(500);
+  const approvalMails = backend.mails.filter((m) => m.subject.includes("Inventory import"));
+  check("one approval email for the whole import, to the IT Head", approvalMails.length === 1 && backend.mails.length === 1 && approvalMails[0].toRecipients[0].emailAddress.address === "prasenjit.baidya@encalm.com", JSON.stringify(backend.mails.map((m) => m.subject)));
   await page.screenshot({ path: OUT + "/import-done.png", fullPage: true });
   await page.goto("http://localhost:10000/", { waitUntil: "networkidle" }); await page.waitForTimeout(1500);
   t = await body();
@@ -32,7 +36,7 @@ const OUT = path.join(__dirname, "../../test-results"), SAMPLE = path.join(__dir
   t = await body();
   check("before approval: import hand-over pending", /APPROVAL PENDING/i.test(t) && t.includes("INVENTORY IMPORT"));
   // One approval for the whole import (link from the single email)
-  const batch = await page.evaluate(() => JSON.parse(localStorage.getItem("@encalm/asset_cache_v3")).items.find((a) => a.approvalRequest && a.approvalRequest.batchId).approvalRequest.batchId);
+  const batch = await page.evaluate(() => JSON.parse(localStorage.getItem("@encalm/asset_cache_v4")).items.find((a) => a.approvalRequest && a.approvalRequest.batchId).approvalRequest.batchId);
   await page.goto(`http://localhost:10000/approve?batch=${batch}&decision=approve`, { waitUntil: "networkidle" }); await page.waitForTimeout(1500);
   check("batch approve page lists all 3", (await body()).includes("Inventory import — 3 hand-over(s)"));
   await page.getByRole("button", { name: "Approve all 3" }).click(); await page.waitForTimeout(3000);
@@ -45,7 +49,7 @@ const OUT = path.join(__dirname, "../../test-results"), SAMPLE = path.join(__dir
   check("detail: Send confirmation request button", t.includes("Send confirmation request"));
   check("detail: GOA location + Hospitality", t.includes("GOA — ") && t.includes("ENCALM HOSPITALITY PVT LTD"));
   await page.screenshot({ path: OUT + "/import-detail.png", fullPage: true });
-  check("no emails sent during import", mails.length === 0, JSON.stringify(mails));
+  check("no emails to the users (only the approval email)", backend.mails.length === 1 && drafts.length === 0, JSON.stringify(backend.mails.map((m) => m.subject)));
   // new asset form: new fields + required errors
   await page.goto("http://localhost:10000/asset/new", { waitUntil: "networkidle" }); await page.waitForTimeout(1200);
   t = await body();

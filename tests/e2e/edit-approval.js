@@ -2,24 +2,20 @@
 // technician report logs, and staff seeing only their own devices.
 const { chromium } = require("playwright");
 const { seedSession } = require("./seed");
+const { mockBackend, signIn } = require("./mock");
 const BASE = "http://localhost:10000";
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined });
   const ctx = await browser.newContext({ viewport: { width: 900, height: 1500 }, acceptDownloads: true });
+  const backend = await mockBackend(ctx);
   const page = await ctx.newPage();
   const errors = []; page.on("pageerror", (e) => { if (!/jsdelivr/.test(e.message)) errors.push(e.message); });
   const dialogs = []; page.on("dialog", async (d) => { dialogs.push(d.message()); await d.accept(); });
   const check = (n, c, x = "") => console.log(`${c ? "PASS" : "FAIL"} ${n} ${x}`);
   const body = () => page.locator("body").innerText();
-  const role = async (r) => {
-    await page.goto(`${BASE}/settings`, { waitUntil: "networkidle" }); await page.waitForTimeout(700);
-    await page.getByText(r, { exact: true }).click(); await page.waitForTimeout(400);
-  };
+  const role = (r) => signIn(page, r, "/settings");
   const DEV = "ENC-MON-2026-0002";
   const open = async () => { await page.goto(`${BASE}/asset/${DEV}`, { waitUntil: "networkidle" }); await page.waitForTimeout(1200); };
-
-  await page.goto(`${BASE}/login`, { waitUntil: "networkidle" });
-  await page.getByText("Explore in Demo Mode").click(); await page.waitForTimeout(1800);
 
   // 1. Technician: Edit asks for a reason and sends it for approval
   await role("technician");
@@ -33,10 +29,11 @@ const BASE = "http://localhost:10000";
   await page.getByRole("button", { name: "Send for approval" }).click(); await page.waitForTimeout(1200);
   check("sent for approval", dialogs.some((d) => d.includes("edit request has been sent to the IT-Asset Approver")), JSON.stringify(dialogs));
   t = await body();
+  check("approval email to the IT Head names the reason", backend.mails.some((m) => m.subject.startsWith("[Approval required] Edit ENC-HYD-MN-002") && m.toRecipients[0].emailAddress.address === "prasenjit.baidya@encalm.com" && m.body.content.includes("Serial number typo")), JSON.stringify(backend.mails.map((m) => m.subject)));
   check("pending banner + Edit pending", /APPROVAL PENDING:\s*EDIT REQUEST/i.test(t) && t.includes("Serial number typo") && t.includes("Edit pending"));
   await page.getByRole("button", { name: "Edit" }).click(); await page.waitForTimeout(400);
   check("pending edit doesn't open the form", (await page.getByText("Save changes").count()) === 0 && dialogs.some((d) => d.includes("waiting for approval")));
-  const reqId = await page.evaluate((id) => JSON.parse(localStorage.getItem("@encalm/asset_cache_v3")).items.find((a) => a.id === id).approvalRequest.id, DEV);
+  const reqId = await page.evaluate((id) => JSON.parse(localStorage.getItem("@encalm/asset_cache_v4")).items.find((a) => a.id === id).approvalRequest.id, DEV);
 
   // 2. Only approvers decide
   await page.goto(`${BASE}/approve?asset=${DEV}&request=${reqId}`, { waitUntil: "networkidle" }); await page.waitForTimeout(1000);
@@ -47,7 +44,7 @@ const BASE = "http://localhost:10000";
   check("approve page shows the edit request", t.includes("Allow this edit?") && t.includes("Serial number typo") && t.includes("one change within 24 hours"));
   await page.getByRole("button", { name: "Approve", exact: true }).click(); await page.waitForTimeout(1500);
   t = await body();
-  check("decision recorded; technician emailed", t.includes("Decision recorded") && t.includes("can save one change within 24 hours"));
+  check("decision recorded; technician emailed", t.includes("Decision recorded") && t.includes("can save one change within 24 hours") && backend.mails.some((m) => m.subject.startsWith("[Approved] Edit ENC-HYD-MN-002") && m.toRecipients[0].emailAddress.address === "tech.one@encalm.com"));
 
   // 3. Technician edits once
   await role("technician");
@@ -59,9 +56,9 @@ const BASE = "http://localhost:10000";
   await page.getByPlaceholder("e.g. C02G1234MD6R").fill("CN0987654322");
   await page.getByText("Save changes").click(); await page.waitForTimeout(1500);
   t = await body();
-  check("saved", t.includes("CN0987654322") && (await page.getByText("Save changes").count()) === 0);
+  check("saved", t.includes("CN0987654322") && (await page.getByText("Save changes").count()) === 0 && backend.store.get("2").serialNumber === "CN0987654322");
   check("grant used up: Edit needs a new request", !t.includes("EDIT APPROVED") && (await page.getByRole("button", { name: "Edit (needs approval)" }).count()) === 1);
-  const events = await page.evaluate((id) => JSON.parse(localStorage.getItem("@encalm/asset_cache_v3")).items.find((a) => a.id === id).events.map((e) => e.type), DEV);
+  const events = await page.evaluate((id) => JSON.parse(localStorage.getItem("@encalm/asset_cache_v4")).items.find((a) => a.id === id).events.map((e) => e.type), DEV);
   check("events logged: requested, approved", events.includes("edit_requested") && events.includes("edit_approved"), JSON.stringify(events));
 
   // 4. QR print and share

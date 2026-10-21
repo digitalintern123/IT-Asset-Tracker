@@ -22,7 +22,7 @@ interface Props {
 /**
  * "Assigned to" + email, picked from Azure AD. The email comes from the
  * directory and is read-only. Falls back to manual entry only when the
- * directory cannot be searched (Demo Mode, offline, permission not granted).
+ * directory cannot be searched (offline, permission not granted).
  */
 export function PeoplePicker({ value, onChange, nameLabel, emailLabel }: Props) {
   const colors = useColors();
@@ -36,8 +36,7 @@ export function PeoplePicker({ value, onChange, nameLabel, emailLabel }: Props) 
   const abortRef = useRef<AbortController | null>(null);
 
   const mode = pickerModeFor({
-    isDemo: user?.isDemo,
-    hasToken: !!user?.accessToken && !user?.isDemo,
+    hasToken: !!user?.accessToken,
     online: isNetworkOnline(),
     lastErrorStatus,
     lastErrorWasNetwork,
@@ -91,9 +90,7 @@ export function PeoplePicker({ value, onChange, nameLabel, emailLabel }: Props) 
         <View style={[styles.note, { backgroundColor: colors.muted, borderColor: colors.border }]}>
           <Info size={14} color={colors.mutedForeground} strokeWidth={1.8} />
           <Text style={[styles.noteText, { color: colors.mutedForeground }]}>
-            {user?.isDemo
-              ? "Demo Mode: directory search is off — enter details manually."
-              : "Directory search unavailable — enter details manually."}
+            Directory search unavailable — enter details manually.
           </Text>
         </View>
         <View style={{ gap: 6 }}>

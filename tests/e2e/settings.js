@@ -1,30 +1,26 @@
 const { chromium } = require("playwright");
 const { seedSession } = require("./seed");
+const { mockBackend, signIn } = require("./mock");
 const OUT = require("path").join(__dirname, "../../test-results");
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 const accessToken = "h." + b64({ scp: "Sites.ReadWrite.All User.ReadBasic.All Mail.Send User.Read" }) + ".s";
 const check = (n, c, x = "") => console.log(`${c ? "PASS" : "FAIL"} ${n} ${x}`);
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined });
-  // ---- demo
+  // ---- roles from the signed token (admin + approver, then technician)
   let page = await browser.newPage({ viewport: { width: 900, height: 1800 } });
   const errors = []; page.on("pageerror", (e) => { if (!/jsdelivr/.test(e.message)) errors.push(e.message); });
   const dialogs = []; page.on("dialog", async (d) => { dialogs.push(d.message()); await d.accept(); });
-  await page.goto("http://localhost:10000/login", { waitUntil: "networkidle" });
-  await page.getByText("Explore in Demo Mode").click(); await page.waitForTimeout(1500);
-  await page.goto("http://localhost:10000/settings", { waitUntil: "networkidle" }); await page.waitForTimeout(1200);
+  await mockBackend(page.context());
+  await signIn(page, "admin", "/settings");
   let t = await page.locator("body").innerText();
-  check("demo: Simulated + IT Administrator + source", t.includes("Simulated") && t.includes("IT Administrator") && t.includes("From: Demo role switcher"));
-  await page.getByText("technician", { exact: true }).click(); await page.waitForTimeout(400);
+  check("admin: Connected + IT Administrator + Entra source + approver", t.includes("Connected") && t.includes("IT Administrator") && t.includes("From: Entra app role Asset.Admin") && t.includes("IT-Asset Approver: Yes"));
+  check("admin: Import, Report logs and Sync device access offered", t.includes("Import from Excel") && t.includes("Report logs") && t.includes("Sync device access"));
+  check("no Demo Mode anywhere", !/demo/i.test(t));
+  await signIn(page, "technician", "/settings");
   t = await page.locator("body").innerText();
-  check("demo switcher -> IT Technician, Import link hidden", t.includes("IT Technician") && !t.includes("Import from Excel"));
-  await page.getByText("admin", { exact: true }).click(); await page.waitForTimeout(400);
-  await page.getByText("Run Test").click(); await page.waitForTimeout(500);
-  t = await page.locator("body").innerText();
-  check("demo Run Test -> Passed", t.includes("Passed") && t.includes("All 1 checks passed"));
-  await page.getByText("Microsoft SharePoint Online", { exact: true }).click(); await page.waitForTimeout(300);
-  check("SharePoint row tap shows notice on web", dialogs.some((d) => d.includes("Demo Sandbox")), JSON.stringify(dialogs));
-  await page.screenshot({ path: OUT + "/settings-demo.png", fullPage: true });
+  check("technician: IT Technician, Report logs, no Import / Sync / approver", t.includes("IT Technician") && t.includes("Report logs") && !t.includes("Import from Excel") && !t.includes("Sync device access") && t.includes("IT-Asset Approver: No"));
+  await page.screenshot({ path: OUT + "/settings-technician.png", fullPage: true });
   await page.close();
   // ---- tampered real profile: says admin, no signed role
   const ctx = await browser.newContext({ viewport: { width: 900, height: 2000 } });

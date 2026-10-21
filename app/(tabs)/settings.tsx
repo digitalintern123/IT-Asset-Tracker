@@ -21,7 +21,7 @@ import { ChevronRight, Cloud, Database, FileText, LogOut, LucideIcon, Upload } f
 import { useAssets } from "@/contexts/AssetContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
-import { UserRole, ROLE_LABELS, ROLE_DESCRIPTIONS } from "@/lib/roles";
+import { ROLE_LABELS, ROLE_DESCRIPTIONS } from "@/lib/roles";
 import { checkSetup, fixSharePointSetup, MANAGE_SCOPE, SetupReport } from "@/lib/setupCheck";
 
 type LucideIconName = string;
@@ -30,7 +30,7 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { assets, syncing, syncError, lastSyncedAt, refresh, syncDeviceAccess } = useAssets();
   const [accessProgress, setAccessProgress] = useState<string | null>(null);
-  const { user, signOut, setDemoRole, getValidAccessToken, getTokenForScopes } = useAuth();
+  const { user, signOut, getValidAccessToken, getTokenForScopes } = useAuth();
   const [fixing, setFixing] = useState(false);
   const router = useRouter();
   const [testingSp, setTestingSp] = useState(false);
@@ -42,9 +42,7 @@ export default function SettingsScreen() {
     if (Platform.OS === "web") window.alert(`${title}\n\n${message}`);
     else Alert.alert(title, message);
   };
-  const spState: "demo" | "signedOut" | "error" | "connected" | "notSynced" = user?.isDemo
-    ? "demo"
-    : !user
+  const spState: "signedOut" | "error" | "connected" | "notSynced" = !user
     ? "signedOut"
     : syncError
     ? "error"
@@ -52,7 +50,6 @@ export default function SettingsScreen() {
     ? "connected"
     : "notSynced";
   const SP_PILL = {
-    demo: { bg: "#FFF3E0", fg: "#E65100", text: "Simulated" },
     signedOut: { bg: colors.muted, fg: colors.mutedForeground, text: "Disconnected" },
     error: { bg: "#FCE8E6", fg: "#C5221F", text: "Error" },
     connected: { bg: "#E6F4EA", fg: "#137333", text: "Connected" },
@@ -214,18 +211,12 @@ export default function SettingsScreen() {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={[styles.summaryTitle, { color: colors.foreground }]}>
-            {user?.isDemo
-              ? "Demo Sandbox (Local)"
-              : user
-              ? "SharePoint Online Database"
-              : "Demo Mode"}
+            {user ? "SharePoint Online Database" : "Not signed in"}
           </Text>
           <Text
             style={[styles.summarySub, { color: colors.mutedForeground }]}
           >
-            {user?.isDemo
-              ? `${assets.length} sample assets · Local sandbox mode`
-              : user
+            {user
               ? `${assets.length} corporate assets connected to encalmit.sharepoint.com`
               : "Sign in with Microsoft 365 to load corporate assets"}
           </Text>
@@ -237,9 +228,7 @@ export default function SettingsScreen() {
           icon="cloud"
           label="Microsoft SharePoint Online"
           sublabel={
-            user?.isDemo
-              ? "Demo sandbox (No corporate records modified)"
-              : !user
+            !user
               ? "Sign in to connect"
               : syncError
               ? `Couldn't load the register: ${syncError}`
@@ -247,9 +236,7 @@ export default function SettingsScreen() {
           }
           colors={colors}
           onPress={() => {
-            if (user?.isDemo) {
-              notice("Demo Sandbox", "You are in Demo Mode. Assets are simulated locally and not synced to corporate SharePoint.");
-            } else if (user) {
+            if (user) {
               refresh();
             } else {
               notice("Sign In Required", "Please sign in with your corporate Microsoft 365 account to access SharePoint.");
@@ -287,14 +274,6 @@ export default function SettingsScreen() {
           }
           colors={colors}
           onPress={async () => {
-            if (user?.isDemo) {
-              setTestResult({
-                ok: true,
-                items: [{ label: "Demo Mode: local mock database (nothing to check)", ok: true }],
-                latencyMs: 14,
-              });
-              return;
-            }
             const token = (await getValidAccessToken()) || user?.accessToken;
             if (!token) {
               if (Platform.OS === "web") window.alert("Sign in required to test SharePoint connection.");
@@ -363,7 +342,7 @@ export default function SettingsScreen() {
             </View>
           }
         />
-        {testResult && !testingSp && !user?.isDemo ? (
+        {testResult && !testingSp ? (
           <View
             style={{
               paddingHorizontal: 16,
@@ -443,9 +422,7 @@ export default function SettingsScreen() {
           icon="shield"
           label="Microsoft Azure AD (Entra ID)"
           sublabel={
-            user?.isDemo
-              ? "Demo session · demo@encalmhospitality.com"
-              : user
+            user
               ? `Signed in as ${user.email}`
               : "Single sign-on ready"
           }
@@ -454,16 +431,16 @@ export default function SettingsScreen() {
             <View
               style={[
                 styles.statusPill,
-                { backgroundColor: user?.isDemo ? "#FFF3E0" : user ? "#E6F4EA" : colors.muted },
+                { backgroundColor: user ? "#E6F4EA" : colors.muted },
               ]}
             >
               <Text
                 style={[
                   styles.statusPillText,
-                  { color: user?.isDemo ? "#E65100" : user ? "#137333" : colors.mutedForeground },
+                  { color: user ? "#137333" : colors.mutedForeground },
                 ]}
               >
-                {user?.isDemo ? "Demo" : user ? "Active" : "Signed Out"}
+                {user ? "Active" : "Signed Out"}
               </Text>
             </View>
           }
@@ -476,15 +453,13 @@ export default function SettingsScreen() {
               `${ROLE_DESCRIPTIONS[user.role || "viewer"]}` +
               (user.roleSource ? `\nFrom: ${user.roleSource}` : "") +
               `\nIT-Asset Approver: ${user.isApprover ? "Yes — you approve hand-overs and edit requests" : "No"}` +
-              (user.role === "viewer" && !user.isDemo
+              (user.role === "viewer"
                 ? user.seesAll
                   ? "\nSees: the whole register (Auditor, read-only)"
                   : "\nSees: only the devices issued to you"
                 : "") +
-              (user.isDemo
-                ? ""
-                : `\nRoles in your Microsoft sign-in: ${user.tokenRoles?.length ? user.tokenRoles.join(", ") : "none"}`) +
-              (user.isDemo ? "" : "\nRole changes in Entra ID apply at your next sign-in or within the hour.")
+              `\nRoles in your Microsoft sign-in: ${user.tokenRoles?.length ? user.tokenRoles.join(", ") : "none"}` +
+              "\nRole changes in Entra ID apply at your next sign-in or within the hour."
             }
             colors={colors}
             right={
@@ -520,69 +495,7 @@ export default function SettingsScreen() {
             }
           />
         ) : null}
-        {user?.isDemo ? (
-          <View
-            style={{
-              paddingHorizontal: 16,
-              paddingVertical: 14,
-              backgroundColor: colors.card,
-              borderBottomWidth: 1,
-              borderBottomColor: colors.border,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 11,
-                fontFamily: "Inter_600SemiBold",
-                color: colors.mutedForeground,
-                marginBottom: 8,
-                letterSpacing: 0.5,
-              }}
-            >
-              DEMO ROLE SWITCHER (TEST RBAC)
-            </Text>
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              {(["admin", "technician", "viewer"] as UserRole[]).map((r) => {
-                const active = user.role === r;
-                return (
-                  <Pressable
-                    key={r}
-                    onPress={() => setDemoRole(r)}
-                    style={{
-                      flex: 1,
-                      paddingVertical: 8,
-                      borderRadius: 8,
-                      alignItems: "center",
-                      backgroundColor: active ? colors.primary : colors.muted,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontFamily: "Inter_600SemiBold",
-                        color: active ? "#FFFFFF" : colors.mutedForeground,
-                        textTransform: "capitalize",
-                      }}
-                    >
-                      {r}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-        ) : null}
-        {user?.isDemo ? (
-          <Row
-            icon="log-in"
-            label="Connect Corporate Microsoft 365"
-            sublabel="Sign in to access real Encalm SharePoint inventory"
-            colors={colors}
-            onPress={() => signOut()}
-            right={<ChevronRight size={16} color={colors.primary} strokeWidth={1.8} />}
-          />
-        ) : null}
-        {user && !user.isDemo && (user.isApprover || user.role === "admin") ? (
+        {user && (user.isApprover || user.role === "admin") ? (
           <Row
             icon="lock"
             label="Sync device access"
@@ -683,7 +596,7 @@ export default function SettingsScreen() {
         <Row
           icon="hard-drive"
           label="Database"
-          sublabel={user ? "Microsoft SharePoint Online (Live Master)" : "Demo Mode (Ephemeral Cache)"}
+          sublabel="Microsoft SharePoint Online (Live Master)"
           colors={colors}
         />
       </Section>

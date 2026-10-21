@@ -15,13 +15,12 @@ export type PickerMode = "directory" | "manual";
 
 /** Directory search is used only when it can work; otherwise fall back to manual entry. */
 export function pickerModeFor(opts: {
-  isDemo?: boolean;
   hasToken: boolean;
   online: boolean;
   lastErrorStatus?: number | null;
   lastErrorWasNetwork?: boolean;
 }): PickerMode {
-  if (opts.isDemo || !opts.hasToken || !opts.online) return "manual";
+  if (!opts.hasToken || !opts.online) return "manual";
   if (opts.lastErrorStatus === 401 || opts.lastErrorStatus === 403) return "manual";
   if (opts.lastErrorWasNetwork) return "manual";
   return "directory";

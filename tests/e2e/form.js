@@ -1,4 +1,5 @@
 const { chromium } = require("playwright");
+const { mockBackend, signIn } = require("./mock");
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined });
   const page = await browser.newPage({ viewport: { width: 900, height: 1800 } });
@@ -7,8 +8,8 @@ const { chromium } = require("playwright");
   const check = (n, c, x = "") => console.log(`${c ? "PASS" : "FAIL"} ${n} ${x}`);
   const body = () => page.locator("body").innerText();
   const save = async () => { await page.getByText("CREATE ASSET").click(); await page.waitForTimeout(500); return body(); };
-  await page.goto("http://localhost:10000/login", { waitUntil: "networkidle" });
-  await page.getByText("Explore in Demo Mode").click(); await page.waitForTimeout(1800);
+  await mockBackend(page.context());
+  await signIn(page, "admin");
   await page.goto("http://localhost:10000/asset/new", { waitUntil: "networkidle" }); await page.waitForTimeout(1200);
   await page.getByPlaceholder("e.g. ENC-DEL-LT-014").fill("DEL-EATS-NB005");
   await page.getByPlaceholder("e.g. Dell").fill("Dell");

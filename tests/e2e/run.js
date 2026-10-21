@@ -11,7 +11,7 @@ const http = require("http");
 const path = require("path");
 
 const root = path.join(__dirname, "../..");
-const HELPERS = new Set(["run.js", "seed.js"]);
+const HELPERS = new Set(["run.js", "seed.js", "mock.js"]);
 const suites = fs.readdirSync(__dirname).filter((f) => f.endsWith(".js") && !HELPERS.has(f)).sort();
 
 if (!fs.existsSync(path.join(root, "web-build/index.html"))) {

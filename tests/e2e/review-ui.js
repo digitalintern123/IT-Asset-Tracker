@@ -1,4 +1,5 @@
 const { chromium } = require("playwright");
+const { SAMPLE_ASSETS, mockBackend, signIn, pickPerson } = require("./mock");
 const SAMPLE = require("path").join(__dirname, "../fixtures/inventory-sample.xlsx");
 const check = (n, c, x = "") => console.log(`${c ? "PASS" : "FAIL"} ${n} ${x}`);
 (async () => {
@@ -7,11 +8,15 @@ const check = (n, c, x = "") => console.log(`${c ? "PASS" : "FAIL"} ${n} ${x}`);
   const errors = []; page.on("pageerror", (e) => { if (!/jsdelivr/.test(e.message)) errors.push(e.message); });
   const dialogs = []; page.on("dialog", async (d) => { dialogs.push(d.message()); await d.accept(); });
   const body = () => page.locator("body").innerText();
-  await page.goto("http://localhost:10000/login", { waitUntil: "networkidle" });
-  await page.getByText("Explore in Demo Mode").click(); await page.waitForTimeout(1500);
+  // Directory search not consented here: the picker falls back to manual entry.
+  await mockBackend(page.context(), SAMPLE_ASSETS, { directory: "forbidden" });
+  await signIn(page, "admin");
   // 1. Reassign dialog validation
   await page.goto("http://localhost:10000/asset/ENC-LAP-2026-0001", { waitUntil: "networkidle" }); await page.waitForTimeout(1200);
   await page.getByText("Reassign", { exact: true }).first().click(); await page.waitForTimeout(500);
+  await page.getByPlaceholder("Search Azure AD by name or email").last().fill("Bob");
+  await page.waitForTimeout(1200);
+  check("directory search refused -> manual entry", (await body()).includes("Directory search unavailable — enter details manually."));
   await page.getByPlaceholder("Person or team").fill("Bob Test");
   await page.getByPlaceholder("name@encalm.com").fill("bob@");
   await page.getByText(/Confirm|Transfer|Reassign/).last().click(); await page.waitForTimeout(800);
@@ -26,31 +31,26 @@ const check = (n, c, x = "") => console.log(`${c ? "PASS" : "FAIL"} ${n} ${x}`);
   let t = await body();
   const assignedLine = (t.match(/Assigned to\s*\n\s*([^\n]+)/) || [])[1];
   check("returned device has no current user", !assignedLine || !/Rahul/.test(assignedLine), String(assignedLine));
-  // 3. technician (fresh demo session): pending request blocks a second one
-  const p2 = await (await browser.newContext({ viewport: { width: 900, height: 1800 } })).newPage();
+  // 3. technician (fresh session and register): pending request blocks a second one
+  const ctx2 = await browser.newContext({ viewport: { width: 900, height: 1800 } });
+  await mockBackend(ctx2);
+  const p2 = await ctx2.newPage();
   p2.on("dialog", async (d) => { dialogs.push(d.message()); await d.accept(); });
-  await p2.goto("http://localhost:10000/login", { waitUntil: "networkidle" });
-  await p2.getByText("Explore in Demo Mode").click(); await p2.waitForTimeout(1500);
-  await p2.goto("http://localhost:10000/settings", { waitUntil: "networkidle" }); await p2.waitForTimeout(800);
-  await p2.getByText("technician", { exact: true }).click(); await p2.waitForTimeout(400);
-  await p2.goto("http://localhost:10000/asset/ENC-LAP-2026-0001", { waitUntil: "networkidle" }); await p2.waitForTimeout(1200);
+  await signIn(p2, "technician", "/asset/ENC-LAP-2026-0001");
   { const page = p2; const body = () => p2.locator("body").innerText();
   t = await body();
   if (t.includes("In Use")) {
     await page.getByText("Reassign", { exact: true }).first().click(); await page.waitForTimeout(500);
-    await page.getByPlaceholder("Person or team").fill("Carol New");
-    await page.getByPlaceholder("name@encalm.com").fill("carol@encalm.com");
+    await pickPerson(page, "Carol New");
     await page.getByText(/Confirm|Transfer|Reassign/).last().click(); await page.waitForTimeout(1500);
     t = await body();
     check("pending request: banner shown", /APPROVAL PENDING/i.test(t));
     check("pending request: Reassign + Request Deletion hidden", !t.includes("Request Asset Deletion") && !/\bReassign\b(?! request)/.test(t.replace(/REASSIGN REQUEST/gi, "")), "");
   } else {
-    check("demo asset 0001 is In Use (precondition)", false, t.slice(0, 200));
+    check("sample asset 0001 is In Use (precondition)", false, t.slice(0, 200));
   }
   }
   // 4. import summary skipped count (admin)
-  await page.goto("http://localhost:10000/settings", { waitUntil: "networkidle" }); await page.waitForTimeout(800);
-  await page.getByText("admin", { exact: true }).click(); await page.waitForTimeout(400);
   await page.goto("http://localhost:10000/import", { waitUntil: "networkidle" }); await page.waitForTimeout(1000);
   const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.getByText("Choose .xlsx file").click()]);
   await chooser.setFiles(SAMPLE); await page.waitForTimeout(2000);

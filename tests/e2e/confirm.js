@@ -1,5 +1,6 @@
 const { chromium } = require("playwright");
 const { seedSession } = require("./seed");
+const { mockBackend, signIn } = require("./mock");
 const OUT = require("path").join(__dirname, "../../test-results");
 const PROFILE = { email: "rahul@encalm.com", name: "Rahul Sharma", initials: "RS", role: "viewer" };
 const check = (n, c, x = "") => console.log(`${c ? "PASS" : "FAIL"} ${n} ${x}`);
@@ -44,28 +45,22 @@ const check = (n, c, x = "") => console.log(`${c ? "PASS" : "FAIL"} ${n} ${x}`);
   console.log("page errors (1):", JSON.stringify(errors));
   await ctx.close();
 
-  // ---- 3: asset page delete lock (Demo admin with a cached confirmed asset)
+  // ---- 3: asset page delete lock (admin; the user confirmed in SharePoint)
   const ctx2 = await browser.newContext({ viewport: { width: 900, height: 2200 } });
-  const cached = { lastFetched: Date.now(), items: [{
-    id: "ENC-LAP-2026-0009", spItemId: "demo-9", name: "ENC-DEL-LT-009", make: "Dell", model: "Latitude 5440", category: "Laptop", serialNumber: "SN9",
+  await mockBackend(ctx2, [{
+    id: "ENC-LAP-2026-0009", spItemId: "9", name: "ENC-DEL-LT-009", make: "Dell", model: "Latitude 5440", category: "Laptop", serialNumber: "SN9",
     status: "in_use", assignee: "Rahul Sharma", location: "DEL — T3", vertical: "ENCALM HOTEL", purchaseDate: "2026-01-01", purchasePrice: 1, warrantyExpiry: "2028-01-01", notes: "",
-    assignmentHistory: [{ id: "h9", assignee: "Rahul Sharma", assigneeEmail: "rahul@encalm.com", assignedAt: "2026-01-02T00:00:00Z", confirmedAt: "2026-01-03T09:00:00Z", confirmedBy: "Rahul Sharma" }],
-    events: [], createdAt: "", updatedAt: "", _syncStatus: "synced" }] };
-  await ctx2.addInitScript((c) => {
-    localStorage.setItem("@asset-tracker/user_profile_v3", JSON.stringify({ email: "it@encalmhospitality.com", name: "IT Admin", initials: "IA", role: "admin", isDemo: true }));
-    localStorage.setItem("@encalm/asset_cache_v3", JSON.stringify(c));
-  }, cached);
+    assignmentHistory: [{ id: "h9", assignee: "Rahul Sharma", assigneeEmail: "rahul@encalm.com", assignedAt: "2026-01-02T00:00:00Z" }],
+    events: [], createdAt: "", updatedAt: "" }], {
+    confirmations: [{ id: "c1", fields: { Title: "ENC-LAP-2026-0009", CustodyId: "h9", ConfirmedAt: "2026-01-03T09:00:00Z" }, createdBy: { user: { email: "rahul@encalm.com", displayName: "Rahul Sharma" } } }],
+  });
   const p2 = await ctx2.newPage(); const e2 = []; p2.on("pageerror", (e) => { if (!/jsdelivr/.test(e.message)) e2.push(e.message); });
-  await p2.goto("http://localhost:10000/asset/ENC-LAP-2026-0009", { waitUntil: "networkidle" }); await p2.waitForTimeout(1800);
+  await signIn(p2, "admin", "/asset/ENC-LAP-2026-0009");
   txt = await p2.locator("body").innerText();
   check("asset page: confirmed shown in custody history", txt.includes("✓ Confirmed by Rahul Sharma"));
   check("asset page: Delete hidden + explanation shown", !/DELETE ASSET/i.test(txt) && txt.includes("deletion is disabled until"));
   check("asset page: Host name / Make / Model rows", txt.includes("Host name") && txt.includes("Latitude 5440"));
   await p2.screenshot({ path: OUT + "/asset-locked.png", fullPage: true });
-  // demo /confirm
-  await p2.goto("http://localhost:10000/confirm?asset=ENC-LAP-2026-0009&custody=h9", { waitUntil: "networkidle" }); await p2.waitForTimeout(1200);
-  txt = await p2.locator("body").innerText();
-  check("demo /confirm explains Microsoft sign-in needed", txt.includes("Sign in with Microsoft to confirm"));
   // form labels
   await p2.goto("http://localhost:10000/asset/new", { waitUntil: "networkidle" }); await p2.waitForTimeout(1200);
   txt = await p2.locator("body").innerText();

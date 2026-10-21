@@ -36,12 +36,11 @@ export default function AssetsScreen() {
   // Staff without an IT role can't read the register (it is restricted to
   // the IT groups in SharePoint); explain that instead of "no assets".
   const noRegisterAccess =
-    !user?.isDemo &&
     user?.role === "viewer" &&
     !!syncError &&
     /not found|access denied|403|401/i.test(syncError);
   // Staff (no IT or auditor role) only see the devices issued to them.
-  const ownOnly = !!user && !user.isDemo && !user.seesAll;
+  const ownOnly = !!user && !user.seesAll;
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
 

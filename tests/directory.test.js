@@ -28,7 +28,7 @@ global.fetch = async (url, opts) => { calls.push({ url, opts }); return { ok: re
   ok("403 throws with statusCode", err && err.statusCode === 403);
   const M = d.pickerModeFor;
   ok("signed in + online -> directory", M({ hasToken: true, online: true }) === "directory");
-  ok("demo -> manual", M({ isDemo: true, hasToken: true, online: true }) === "manual");
+  ok("token + online -> directory", M({ hasToken: true, online: true }) === "directory");
   ok("no token -> manual", M({ hasToken: false, online: true }) === "manual");
   ok("offline -> manual", M({ hasToken: true, online: false }) === "manual");
   ok("403 (no consent) -> manual", M({ hasToken: true, online: true, lastErrorStatus: 403 }) === "manual");

@@ -1,4 +1,4 @@
-import { AlertCircle, Eye, MapPin, Shield } from "@/components/LucideIcon";
+import { AlertCircle, MapPin, Shield } from "@/components/LucideIcon";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Href, useRouter } from "expo-router";
@@ -23,7 +23,7 @@ export default function LoginScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { signIn, signInDemo, user } = useAuth();
+  const { signIn, user } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,19 +59,6 @@ export default function LoginScreen() {
     } catch (e: any) {
       setError(e?.message || "Sign in failed. Please try again.");
       setBusy(false);
-    }
-  };
-
-  const handleDemoSignIn = async () => {
-    setError(null);
-    if (Platform.OS !== "web") {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
-    try {
-      await signInDemo();
-      router.replace("/");
-    } catch (e: any) {
-      setError("Failed to enter demo mode.");
     }
   };
 
@@ -147,32 +134,6 @@ export default function LoginScreen() {
                 {busy ? "Authenticating with Microsoft..." : "Sign in with Microsoft 365"}
               </Text>
             </Pressable>
-
-            {/* Divider */}
-            <View style={styles.dividerRow}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>OR</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            {/* Explore in Demo Mode Button */}
-            <Pressable
-              onPress={handleDemoSignIn}
-              disabled={busy}
-              style={({ pressed }) => [
-                styles.demoBtn,
-                {
-                  opacity: pressed ? 0.85 : 1,
-                  transform: [{ scale: pressed ? 0.99 : 1 }],
-                },
-              ]}
-            >
-              <Eye size={16} color="#D8B575" strokeWidth={1.8} />
-              <Text style={styles.demoBtnText}>Explore in Demo Mode</Text>
-            </Pressable>
-            <Text style={styles.demoCaption}>
-              Preview lounge inventory & QR scanner without Microsoft 365 sign-in
-            </Text>
 
             {/* Security Note */}
             <View style={styles.securityBox}>
@@ -329,49 +290,6 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     letterSpacing: 0.5,
     textTransform: "uppercase",
-  },
-  dividerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 16,
-    gap: 12,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
-  },
-  dividerText: {
-    color: "rgba(255, 255, 255, 0.4)",
-    fontSize: 10,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 1.5,
-  },
-  demoBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    backgroundColor: "transparent",
-    borderWidth: 2,
-    borderColor: "#CDA45E",
-    paddingVertical: 13,
-    borderRadius: 50,
-  },
-  demoBtnText: {
-    color: "#CDA45E",
-    fontSize: 14,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-  },
-  demoCaption: {
-    color: "rgba(255, 255, 255, 0.5)",
-    fontSize: 11,
-    fontFamily: "Inter_400Regular",
-    textAlign: "center",
-    marginTop: 8,
-    marginBottom: 4,
   },
   securityBox: {
     flexDirection: "row",

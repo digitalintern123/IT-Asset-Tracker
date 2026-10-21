@@ -3,7 +3,6 @@ import React from "react";
 import { Image, Platform, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
 interface Props {
@@ -16,7 +15,6 @@ interface Props {
 export function BrandHeader({ kicker, title, subtitle, right }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
 
   return (
     <LinearGradient
@@ -45,11 +43,6 @@ export function BrandHeader({ kicker, title, subtitle, right }: Props) {
               </Text>
               <Text style={styles.brandSub}>Hospitality Operations</Text>
             </View>
-            {user?.isDemo ? (
-              <View style={styles.demoBadge}>
-                <Text style={styles.demoBadgeText}>DEMO</Text>
-              </View>
-            ) : null}
           </View>
           <View style={[styles.dotMark, { backgroundColor: colors.brandGold }]} />
         </View>
@@ -140,19 +133,5 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     color: "rgba(255,255,255,0.7)",
     marginTop: 6,
-  },
-  demoBadge: {
-    backgroundColor: "rgba(205, 164, 94, 0.18)",
-    borderWidth: 1,
-    borderColor: "rgba(205, 164, 94, 0.5)",
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  demoBadgeText: {
-    color: "#E2C68E",
-    fontSize: 9,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 1,
   },
 });

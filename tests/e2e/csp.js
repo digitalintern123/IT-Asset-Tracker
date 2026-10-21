@@ -1,8 +1,10 @@
 const { chromium } = require("playwright");
+const { mockBackend, signIn } = require("./mock");
 const check = (n, c, x = "") => console.log(`${c ? "PASS" : "FAIL"} ${n} ${x}`);
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined });
   const page = await browser.newPage({ viewport: { width: 900, height: 1400 } });
+  await mockBackend(page.context());
   const violations = [], errors = [];
   page.on("console", (m) => { if (/Content Security Policy|Refused to/i.test(m.text())) violations.push(m.text()); });
   page.on("pageerror", (e) => { if (!/jsdelivr/.test(e.message)) errors.push(e.message); });
@@ -10,8 +12,9 @@ const check = (n, c, x = "") => console.log(`${c ? "PASS" : "FAIL"} ${n} ${x}`);
   const res = await page.goto("http://localhost:10000/login", { waitUntil: "networkidle" }); await page.waitForTimeout(1200);
   const h = res.headers();
   check("CSP header present", !!h["content-security-policy"] && !!h["strict-transport-security"] && h["x-frame-options"] === "DENY");
-  check("login renders under CSP", /demo mode/i.test(await page.locator("body").innerText()));
-  await page.getByText("Explore in Demo Mode").click(); await page.waitForTimeout(1500);
+  const login = await page.locator("body").innerText();
+  check("login renders under CSP, no Demo Mode", /sign in with microsoft 365/i.test(login) && !/demo/i.test(login));
+  await signIn(page, "admin");
   for (const p of ["/", "/dashboard", "/settings", "/asset/ENC-LAP-2026-0001", "/asset/new", "/reports", "/import", "/scan", "/confirm?asset=ENC-LAP-2026-0001&custody=x"]) {
     await page.goto("http://localhost:10000" + p, { waitUntil: "networkidle" }); await page.waitForTimeout(900);
     const t = await page.locator("body").innerText();

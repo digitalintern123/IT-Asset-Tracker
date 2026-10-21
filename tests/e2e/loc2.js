@@ -1,4 +1,5 @@
 const { chromium } = require("playwright");
+const { mockBackend, signIn } = require("./mock");
 const OUT = require("path").join(__dirname, "../../test-results");
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined });
@@ -7,8 +8,8 @@ const OUT = require("path").join(__dirname, "../../test-results");
   page.on("dialog", async (d) => { console.log("DIALOG:", d.message()); await d.accept(); });
   const check = (n, c, x = "") => console.log(`${c ? "PASS" : "FAIL"} ${n} ${x}`);
   const body = () => page.locator("body").innerText();
-  await page.goto("http://localhost:10000/login", { waitUntil: "networkidle" });
-  await page.getByText("Explore in Demo Mode").click(); await page.waitForTimeout(1800);
+  await mockBackend(page.context());
+  await signIn(page, "admin");
   await page.goto("http://localhost:10000/asset/new", { waitUntil: "networkidle" }); await page.waitForTimeout(1200);
   await page.getByPlaceholder("e.g. ENC-DEL-LT-014").fill("BUG-SKY-NB001");
   await page.getByPlaceholder("e.g. Dell").fill("Dell");

@@ -77,12 +77,6 @@ export default function ConfirmScreen() {
         Please open the link from your email again, or contact Encalm IT.
       </Notice>
     );
-  } else if (user?.isDemo) {
-    body = (
-      <Notice icon="info" colors={colors} title="Sign in with Microsoft to confirm">
-        Confirming receipt needs your Encalm Microsoft 365 account. Sign out of Demo Mode and sign in with Microsoft.
-      </Notice>
-    );
   } else if (phase === "done") {
     body = (
       <Notice icon="ok" colors={colors} title="Thank you — confirmed">

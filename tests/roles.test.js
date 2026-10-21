@@ -22,7 +22,12 @@ ok("substring no longer grants: NotAdmin", r(["NotAdmin"]) === "viewer");
 ok("substring no longer grants: StaffReadOnly / SystemAdministrator", r(["StaffReadOnly"]) === "viewer" && r(["SystemAdministrator"]) === "viewer");
 ok("highest wins regardless of order", r(["Asset.Viewer", "Asset.Technician", "Asset.Admin"]) === "admin" && r(["Asset.Technician", "Asset.Viewer"]) === "technician");
 ok("ADMIN_EMAILS fallback -> admin", r([], "EncalmIT@encalm.com") === "admin");
-ok("demo keeps chosen role", R.resolveUserRole("", [], true, "viewer") === "viewer");
+// Demo Mode is gone: no sign-in path, sample data or role switcher left.
+const repoSrc = (rel) => fs.readFileSync(path.join(repo, rel), "utf8");
+ok("no demo sign-in or role switcher", !/signInDemo|setDemoRole|Explore in Demo Mode|DEMO ROLE SWITCHER/.test(repoSrc("contexts/AuthContext.tsx") + repoSrc("app/login.tsx") + repoSrc("app/(tabs)/settings.tsx")));
+ok("no demo sample assets", !/DEMO_SAMPLE_ASSETS/.test(repoSrc("contexts/AssetContext.tsx")));
+ok("old demo session is signed out on load", /if \(profile\.isDemo\) \{\s*\/\/ Demo Mode was removed[^\n]*\n\s*await AsyncStorage\.removeItem\(PROFILE_STORAGE_KEY\)/.test(repoSrc("contexts/AuthContext.tsx")));
+ok("old asset cache (may hold demo devices) is dropped", repoSrc("contexts/AssetContext.tsx").includes('AsyncStorage.removeItem("@encalm/asset_cache_v3")'));
 ok("roleSource: app role", R.roleSource("x@encalm.com", ["Asset.Technician"]) === "Entra app role Asset.Technician");
 ok("roleSource: admin email", R.roleSource("encalmit@encalm.com", []).startsWith("Admin email list"));
 ok("roleSource: default", R.roleSource("x@encalm.com", []).startsWith("Default"));

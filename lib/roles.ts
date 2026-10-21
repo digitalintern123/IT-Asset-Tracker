@@ -119,10 +119,9 @@ export interface RoleFlags {
 
 /**
  * Flags from the signed token. Staff with no app role only see the devices
- * issued to them. Demo: the admin also approves; every demo role sees all.
+ * issued to them.
  */
-export function roleFlags(role: UserRole, tokenRoles: string[] = [], isDemo = false): RoleFlags {
-  if (isDemo) return { isApprover: role === "admin", seesAll: true };
+export function roleFlags(role: UserRole, tokenRoles: string[] = []): RoleFlags {
   return {
     isApprover: hasClaim(tokenRoles, APPROVER_CLAIMS),
     seesAll: role !== "viewer" || hasClaim(tokenRoles, AUDITOR_CLAIMS) || hasClaim(tokenRoles, APPROVER_CLAIMS),
@@ -150,32 +149,21 @@ function isAdminEmail(email: string): boolean {
 }
 
 /**
- * Determine a user's role from token claims, admin emails list, or demo settings.
+ * Determine a user's role from token claims or the emergency admin emails list.
  */
-export function resolveUserRole(
-  email: string,
-  tokenRoles: string[] = [],
-  isDemo = false,
-  demoRole?: UserRole
-): UserRole {
-  // 1. Demo Mode role selection
-  if (isDemo) {
-    return demoRole || "admin";
-  }
-
-  // 2. Azure AD App Roles from the signed id_token (highest wins)
+export function resolveUserRole(email: string, tokenRoles: string[] = []): UserRole {
+  // 1. Azure AD App Roles from the signed id_token (highest wins)
   const fromClaims = roleFromClaims(tokenRoles);
-  // 3. Emergency fallback: configured administrator emails
+  // 2. Emergency fallback: configured administrator emails
   if (isAdminEmail(email)) return "admin";
   if (fromClaims) return fromClaims.role;
 
-  // 4. Default: read-only until granted an app role in Entra ID.
+  // 3. Default: read-only until granted an app role in Entra ID.
   return "viewer";
 }
 
 /** Human-readable reason for the user's role (shown in Settings). */
-export function roleSource(email: string, tokenRoles: string[] = [], isDemo = false): string {
-  if (isDemo) return "Demo role switcher";
+export function roleSource(email: string, tokenRoles: string[] = []): string {
   const fromClaims = roleFromClaims(tokenRoles);
   if (fromClaims && fromClaims.role === "admin") return `Entra app role ${fromClaims.claim}`;
   if (isAdminEmail(email)) return "Admin email list (emergency fallback)";

@@ -19,7 +19,6 @@ interface EditUser {
   email?: string;
   isApprover?: boolean;
   seesAll?: boolean;
-  isDemo?: boolean;
 }
 
 function same(a?: string | null, b?: string | null): boolean {
@@ -72,6 +71,6 @@ export function isOwnDevice(asset: Asset, email?: string): boolean {
 
 /** The part of the register this user may see. */
 export function visibleAssets(assets: Asset[], user: EditUser | null | undefined): Asset[] {
-  if (!user || user.isDemo || user.seesAll) return assets;
+  if (!user || user.seesAll) return assets;
   return assets.filter((a) => isOwnDevice(a, user.email));
 }

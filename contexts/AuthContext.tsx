@@ -71,7 +71,6 @@ export interface AuthUser {
   permissions: RolePermissions;
   accessToken?: string;
   expiresAt?: number;
-  isDemo?: boolean;
   /** Where the role came from (shown in Settings). */
   roleSource?: string;
   /** App roles exactly as received in the id_token (diagnostics only). */
@@ -86,12 +85,10 @@ interface AuthContextValue {
   user: AuthUser | null;
   loaded: boolean;
   signIn: (email?: string, name?: string) => Promise<void>;
-  signInDemo: () => Promise<void>;
   signOut: () => Promise<void>;
   getValidAccessToken: () => Promise<string | null>;
   /** Access token for extra Graph permissions (admin consent required), without re-signing in. */
   getTokenForScopes: (scopes: string[]) => Promise<string>;
-  setDemoRole: (role: UserRole) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -120,8 +117,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // 1. Silent token refresher & getter
   const getValidAccessToken = useCallback(async (): Promise<string | null> => {
-    if (user?.isDemo) return null;
-
     let current = tokensRef.current;
     if (!current) {
       current = await getSecureTokens();
@@ -177,7 +172,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     return current.accessToken;
-  }, [user?.isDemo]);
+  }, []);
 
   // 2. Load persisted profile and secure tokens on initial mount
   useEffect(() => {
@@ -185,16 +180,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const rawProfile = await AsyncStorage.getItem(PROFILE_STORAGE_KEY);
         if (rawProfile) {
-          const profile = JSON.parse(rawProfile) as AuthUser;
+          const profile = JSON.parse(rawProfile) as AuthUser & { isDemo?: boolean };
           if (profile.isDemo) {
-            const role = profile.role || "admin";
-            setUser({
-              ...profile,
-              role,
-              permissions: getPermissionsForRole(role),
-              ...roleFlags(role, [], true),
-              roleSource: roleSource("", [], true),
-            });
+            // Demo Mode was removed: a saved demo session just signs out.
+            await AsyncStorage.removeItem(PROFILE_STORAGE_KEY);
           } else {
             // Load credentials from secure storage. The stored role is never
             // trusted: it is re-derived from the signed id_token (viewer if none).
@@ -289,7 +278,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // 4. Inactivity Auto-Purge Timer (30 minutes of idle time on Web)
   useEffect(() => {
-    if (Platform.OS !== "web" || typeof window === "undefined" || !user || user.isDemo) {
+    if (Platform.OS !== "web" || typeof window === "undefined" || !user) {
       return;
     }
 
@@ -342,24 +331,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // 6. Sign In Demo
-  const signInDemo = useCallback(async () => {
-    const demoUser: AuthUser = {
-      email: "demo@encalmhospitality.com",
-      name: "Encalm Demo Inspector",
-      initials: "ED",
-      role: "admin",
-      permissions: getPermissionsForRole("admin"),
-      ...roleFlags("admin", [], true),
-      isDemo: true,
-      roleSource: roleSource("", [], true),
-    };
-    tokensRef.current = null;
-    await removeSecureTokens();
-    setUser(demoUser);
-    await AsyncStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(demoUser));
-  }, []);
-
   // Token with extra Graph permissions for one action (the existing session's
   // refresh token is exchanged; nothing is stored).
   const getTokenForScopes = useCallback(async (scopes: string[]): Promise<string> => {
@@ -378,50 +349,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // 7. Demo Role Switcher
-  const setDemoRole = useCallback((role: UserRole) => {
-    setUser((prev) => {
-      if (!prev) return null;
-      // Only the demo session can switch roles; real roles come from Entra ID.
-      if (!prev.isDemo) return prev;
-      const updated: AuthUser = {
-        ...prev,
-        role,
-        permissions: getPermissionsForRole(role),
-        ...roleFlags(role, [], true),
-      };
-      AsyncStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(storedProfile(updated))).catch(() => {});
-      return updated;
-    });
-  }, []);
-
   // 8. Sign Out
   const signOut = useCallback(async () => {
-    const wasDemo = user?.isDemo;
     tokensRef.current = null;
     await removeSecureTokens();
     await AsyncStorage.removeItem(PROFILE_STORAGE_KEY);
     setUser(null);
 
-    if (!wasDemo && Platform.OS === "web" && typeof window !== "undefined") {
+    if (Platform.OS === "web" && typeof window !== "undefined") {
       window.location.href =
         `https://login.microsoftonline.com/${MS_CONFIG.TENANT_ID}/oauth2/v2.0/logout` +
         `?post_logout_redirect_uri=${encodeURIComponent(window.location.origin + "/")}`;
     }
-  }, [user]);
+  }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
       loaded,
       signIn,
-      signInDemo,
       signOut,
       getValidAccessToken,
       getTokenForScopes,
-      setDemoRole,
     }),
-    [user, loaded, signIn, signInDemo, signOut, getValidAccessToken, getTokenForScopes, setDemoRole]
+    [user, loaded, signIn, signOut, getValidAccessToken, getTokenForScopes]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

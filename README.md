@@ -10,7 +10,6 @@ Production asset management system for ENCALM Hospitality, built with **Expo SDK
 - **Authoritative Master**: **SharePoint Online** list (`IT Asset Register` on `encalmit.sharepoint.com`) via **Microsoft Graph API**.
 - **Client Cache**: `AsyncStorage` (`@encalm/asset_cache_v3`) operates strictly as an offline-first local read-replica.
 - **Offline Mutation Queue**: When offline or in-transit, all additions, edits, and deletions are saved to `@encalm/mutation_queue_v2`. The queue automatically flushes to SharePoint when connectivity is active.
-- **Demo Mode**: Sample assets are restricted strictly to unauthenticated demo sessions and are automatically purged upon Microsoft 365 sign-in.
 
 ### 2. Codebase Layer
 - **Canonical Structure**: Standard Expo root structure (`app/`, `contexts/`, `components/`, `constants/`, `hooks/`, `lib/`, `types/`).

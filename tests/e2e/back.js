@@ -1,13 +1,14 @@
 const { chromium } = require("playwright");
+const { mockBackend, signIn } = require("./mock");
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined });
   const ctx = await browser.newContext({ viewport: { width: 1000, height: 900 } });
+  await mockBackend(ctx);
   const page = await ctx.newPage();
   const errors = []; page.on("pageerror", (e) => errors.push(e.message));
   const path = () => new URL(page.url()).pathname;
   const check = (name, cond) => console.log(`${cond ? "PASS" : "FAIL"} ${name} (now ${path()})`);
-  await page.goto("http://localhost:10000/login", { waitUntil: "networkidle" });
-  await page.getByText("Explore in Demo Mode").click(); await page.waitForTimeout(1800);
+  await signIn(page, "admin");
 
   await page.goto("http://localhost:10000/asset/new", { waitUntil: "networkidle" }); await page.waitForTimeout(1200);
   await page.getByText("Cancel", { exact: true }).first().click(); await page.waitForTimeout(1200);

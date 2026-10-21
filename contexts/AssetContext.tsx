@@ -137,7 +137,8 @@ export interface AccessResult {
   error?: string;
 }
 
-const CACHE_KEY = "@encalm/asset_cache_v3";
+// v4: Demo Mode was removed; older caches may hold demo records.
+const CACHE_KEY = "@encalm/asset_cache_v4";
 
 /**
  * True only for failures that offline queueing can actually recover from.
@@ -155,102 +156,6 @@ interface CachePayload {
   lastFetched: number;
   items: Asset[];
 }
-
-export const DEMO_SAMPLE_ASSETS: Asset[] = [
-  {
-    id: "ENC-LAP-2026-0001",
-    spItemId: "demo-1",
-    name: "ENC-DEL-LT-001",
-    make: "Apple",
-    model: "MacBook Pro 16\" M3",
-    category: "Laptop",
-    serialNumber: "C02G1234MD6R",
-    status: "in_use",
-    assignee: "Rahul Sharma",
-    location: "DEL — T3 Terminal Lounge - Reception",
-    vertical: "ENCALM HOSPITALITY PVT LTD",
-    department: "IT",
-    criticality: "Medium",
-    operationalStatus: "Operational",
-    assetClass: "Hardware",
-    purchaseDate: "2024-03-15",
-    purchasePrice: 249900,
-    warrantyExpiry: "2027-03-15",
-    notes: "Assigned to Lounge Duty Manager. Dual external displays.",
-    assignmentHistory: [
-      {
-        id: "hist_1",
-        assignee: "Rahul Sharma",
-        assignedBy: "IT Administrator",
-        assignedAt: "2024-03-16T10:00:00Z",
-        location: "DEL — T3 Terminal Lounge - Reception",
-        notes: "Initial hardware issuance",
-      },
-    ],
-    createdAt: "2024-03-15T00:00:00.000Z",
-    updatedAt: "2024-03-16T00:00:00.000Z",
-    _syncStatus: "synced",
-  },
-  {
-    id: "ENC-MON-2026-0002",
-    spItemId: "demo-2",
-    name: "ENC-HYD-MN-002",
-    make: "Dell",
-    model: "UltraSharp 27\" 4K",
-    category: "Monitor",
-    serialNumber: "CN0987654321",
-    status: "available",
-    assignee: "",
-    location: "HYD — IT Storage",
-    vertical: "ENCALM EATS PVT LTD",
-    department: "IT",
-    criticality: "Medium",
-    operationalStatus: "Operational",
-    assetClass: "Hardware",
-    purchaseDate: "2024-01-10",
-    purchasePrice: 48500,
-    warrantyExpiry: "2027-01-10",
-    notes: "Spares inventory for VIP lounge check-in desks.",
-    assignmentHistory: [],
-    createdAt: "2024-01-10T00:00:00.000Z",
-    updatedAt: "2024-01-10T00:00:00.000Z",
-    _syncStatus: "synced",
-  },
-  {
-    id: "ENC-PHN-2026-0003",
-    spItemId: "demo-3",
-    name: "ENC-GOA-PH-003",
-    make: "Apple",
-    model: "iPhone 15 Pro",
-    category: "Phone",
-    serialNumber: "F2LZ7890N6T1",
-    status: "maintenance",
-    assignee: "Priya Nair",
-    location: "GOA — Encalm Operations Desk",
-    vertical: "ENCALM HOTEL",
-    department: "IT",
-    criticality: "Medium",
-    operationalStatus: "Operational",
-    assetClass: "Hardware",
-    purchaseDate: "2023-11-20",
-    purchasePrice: 134900,
-    warrantyExpiry: "2025-11-20",
-    notes: "Battery replacement requested via Apple Authorized Service.",
-    assignmentHistory: [
-      {
-        id: "hist_2",
-        assignee: "Priya Nair",
-        assignedBy: "IT Lead",
-        assignedAt: "2023-11-21T09:30:00Z",
-        location: "GOA — Encalm Operations Desk",
-        notes: "Airport Duty Manager device",
-      },
-    ],
-    createdAt: "2023-11-20T00:00:00.000Z",
-    updatedAt: "2024-02-01T00:00:00.000Z",
-    _syncStatus: "synced",
-  },
-];
 
 interface AssetContextValue {
   assets: Asset[];
@@ -363,6 +268,8 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
   // 1. Initial hydration from cache
   useEffect(() => {
     (async () => {
+      // Drop the old cache, which could hold Demo Mode sample devices.
+      AsyncStorage.removeItem("@encalm/asset_cache_v3").catch(() => {});
       try {
         const raw = await AsyncStorage.getItem(CACHE_KEY);
         if (raw) {
@@ -380,18 +287,8 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  // 2. Fetch authoritative asset data from SharePoint or refresh demo sandbox
+  // 2. Fetch authoritative asset data from SharePoint
   const refresh = useCallback(async () => {
-    if (user?.isDemo) {
-      setSyncing(true);
-      setSyncError(null);
-      setTimeout(() => {
-        setLastSyncedAt(Date.now());
-        setSyncing(false);
-      }, 300);
-      return;
-    }
-
     const token = (await getValidAccessToken()) || user?.accessToken;
     if (!token && !isMsConfigured()) {
       return;
@@ -433,7 +330,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setSyncing(false);
     }
-  }, [user?.accessToken, user?.isDemo, getValidAccessToken, updateCache]);
+  }, [user?.accessToken, getValidAccessToken, updateCache]);
 
   // 3. Online/offline network listener and queue drainer
   useEffect(() => {
@@ -494,25 +391,20 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
 
   // Revalidate when user state changes
   useEffect(() => {
-    if (user?.accessToken && !user?.isDemo) {
+    if (user?.accessToken) {
       refresh();
-    } else if (user?.isDemo) {
-      setLastSyncedAt(Date.now());
-      setAssets((prev) => (prev.length > 0 ? prev : DEMO_SAMPLE_ASSETS));
     } else if (!user) {
-      // Signed out: show nothing. Demo records must never stand in for
-      // corporate data, because they carry real spItemId values (1, 2, 3)
-      // and an edit would PATCH those SharePoint list items.
+      // Signed out: show nothing.
       setAssets([]);
     }
-  }, [user?.accessToken, user?.isDemo, refresh]);
+  }, [user?.accessToken, refresh]);
 
   // Multi-key asset lookup
   // Staff without an app role see only their own devices (SharePoint item
   // permissions trim the same on the server side).
   const shownAssets = useMemo(
     () => visibleAssets(assets, user),
-    [assets, user?.isDemo, user?.seesAll, user?.email]
+    [assets, user?.seesAll, user?.email]
   );
   const getAsset = useCallback(
     (query: string) => shownAssets.find((a) => matchesAsset(a, query)),
@@ -577,24 +469,18 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       const newAsset: Asset = {
         ...createInput,
         id: stableId,
-        spItemId: user?.isDemo ? String(assets.length + 1) : undefined,
+        spItemId: undefined,
         assignmentHistory: initialHistory,
         events: [...initialEvents, ...requestEvents],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        _syncStatus: user?.isDemo ? "synced" : isNetworkOnline() ? "synced" : "pending_create",
+        _syncStatus: isNetworkOnline() ? "synced" : "pending_create",
       };
-
-      // Demo Mode
-      if (user?.isDemo) {
-        await commitAssets((list) => [newAsset, ...list]);
-        return newAsset;
-      }
 
       const token = (await getValidAccessToken()) || user?.accessToken;
       if (!token && !isMsConfigured()) {
         throw new Error(
-          "Must be signed in to corporate Microsoft 365 or Demo Mode to create assets."
+          "Please sign in with your Encalm Microsoft 365 account to create assets."
         );
       }
 
@@ -645,7 +531,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         setSyncing(false);
       }
     },
-    [user?.accessToken, user?.isDemo, user?.permissions, user?.role, user?.name, assets, getValidAccessToken, updateCache]
+    [user?.accessToken, user?.permissions, user?.role, user?.name, assets, getValidAccessToken, updateCache]
   );
 
   // 5. Update asset (FSM transitions + History trail + Concurrency handling + Offline queue)
@@ -759,7 +645,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         assignmentHistory: history,
         events,
         updatedAt: new Date().toISOString(),
-        _syncStatus: user?.isDemo ? "synced" : isNetworkOnline() ? "synced" : "pending_update",
+        _syncStatus: isNetworkOnline() ? "synced" : "pending_update",
       };
 
       if (input.status === "maintenance" && existing.status !== "maintenance") {
@@ -769,16 +655,10 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         mails.push(...assignmentMails(updatedAsset, existing.assignmentHistory, history, by));
       }
 
-      // Demo Mode (no real email is sent)
-      if (user?.isDemo) {
-        await commitAssets((list) => list.map((a) => (matchesAsset(a, id) ? updatedAsset : a)));
-        return updatedAsset;
-      }
-
       const token = (await getValidAccessToken()) || user?.accessToken;
       if (!token && !isMsConfigured()) {
         throw new Error(
-          "Must be signed in to corporate Microsoft 365 or Demo Mode to update assets."
+          "Please sign in with your Encalm Microsoft 365 account to update assets."
         );
       }
 
@@ -882,7 +762,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         setSyncing(false);
       }
     },
-    [user?.accessToken, user?.isDemo, user?.permissions, user?.role, user?.name, user?.email, user?.isApprover, assets, getValidAccessToken, updateCache]
+    [user?.accessToken, user?.permissions, user?.role, user?.name, user?.email, user?.isApprover, assets, getValidAccessToken, updateCache]
   );
 
   /**
@@ -891,7 +771,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
    */
   const applyDeviceAccess = useCallback(
     async (asset: Asset | undefined): Promise<AccessResult> => {
-      if (!asset || user?.isDemo) return { ok: true };
+      if (!asset) return { ok: true };
       const plan = accessPlan(asset.assignmentHistory);
       if (!plan.grant && plan.revoke.length === 0) return { ok: true };
       try {
@@ -910,7 +790,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         return { ok: false, error };
       }
     },
-    [user?.isDemo, getTokenForScopes]
+    [getTokenForScopes]
   );
 
   // 6. Delete asset
@@ -925,20 +805,14 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       if (isDeleteLocked(existing)) {
         throw new Error(DELETE_LOCKED_MESSAGE);
       }
-      if (!user?.isDemo && !confirmationsLoadedRef.current && openCustodyRecord(existing)?.assigneeEmail) {
+      if (!confirmationsLoadedRef.current && openCustodyRecord(existing)?.assigneeEmail) {
         throw new Error(CONFIRMATIONS_UNKNOWN_MESSAGE);
-      }
-
-      // Demo Mode
-      if (user?.isDemo) {
-        await commitAssets((list) => list.filter((a) => !matchesAsset(a, id)));
-        return;
       }
 
       const token = (await getValidAccessToken()) || user?.accessToken;
       if (!token && !isMsConfigured()) {
         throw new Error(
-          "Must be signed in to corporate Microsoft 365 or Demo Mode to delete assets."
+          "Please sign in with your Encalm Microsoft 365 account to delete assets."
         );
       }
 
@@ -971,7 +845,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         setSyncing(false);
       }
     },
-    [user?.accessToken, user?.isDemo, user?.permissions, assets, getValidAccessToken, updateCache]
+    [user?.accessToken, user?.permissions, assets, getValidAccessToken, updateCache]
   );
 
   // 6. Reassign Asset
@@ -1058,7 +932,6 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       }
       if (
         request.action === "delete" &&
-        !user?.isDemo &&
         !confirmationsLoadedRef.current &&
         openCustodyRecord(existing)?.assigneeEmail
       ) {
@@ -1295,10 +1168,10 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       if (user?.permissions && !user.permissions.canCreateAsset) {
         throw new Error("Unauthorized: Your role does not allow creating new assets.");
       }
-      if (!user?.isDemo && !isNetworkOnline()) {
+      if (!isNetworkOnline()) {
         throw new Error("The import needs an internet connection.");
       }
-      const token = user?.isDemo ? null : (await getValidAccessToken()) || user?.accessToken;
+      const token = (await getValidAccessToken()) || user?.accessToken;
       const by = user?.name || "IT Staff";
       // Work from a running list so each new ID sees the ones created before it.
       let working = [...assetsRef.current];
@@ -1358,17 +1231,15 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
             let asset: Asset = {
               ...input,
               id,
-              spItemId: user?.isDemo ? `demo-imp-${Date.now()}-${i}` : undefined,
+              spItemId: undefined,
               assignmentHistory: history,
               events: created.events,
               createdAt: now,
               updatedAt: now,
               _syncStatus: "synced",
             };
-            if (!user?.isDemo) {
-              const saved = await apiCreateAsset(asset, token || undefined);
-              asset = { ...asset, ...saved, id: saved?.id || id, assignmentHistory: history, events: created.events, _syncStatus: "synced" };
-            }
+            const saved = await apiCreateAsset(asset, token || undefined);
+            asset = { ...asset, ...saved, id: saved?.id || id, assignmentHistory: history, events: created.events, _syncStatus: "synced" };
             working = [asset, ...working];
             importedAssets.unshift(asset);
             results.push({ ok: true, id: asset.id, pending: handOver });
@@ -1386,12 +1257,12 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         .filter((a) => a.approvalRequest?.batchId === batchId)
         .reverse()
         .map((a) => ({ name: a.name, id: a.id, assignee: a.approvalRequest?.pendingChanges?.assignee || "" }));
-      if (pendingDevices.length && !user?.isDemo) {
+      if (pendingDevices.length) {
         void deliverMail(token, buildImportApprovalMail(batchId, pendingDevices, requester, appOrigin()));
       }
       return results;
     },
-    [user?.permissions, user?.isDemo, user?.accessToken, user?.name, getValidAccessToken, commitAssets]
+    [user?.permissions, user?.accessToken, user?.name, getValidAccessToken, commitAssets]
   );
 
   const sendConfirmationRequest = useCallback(
@@ -1402,7 +1273,6 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
         throw new Error("This device has no current user with an email to confirm.");
       }
       if (rec.confirmedAt) throw new Error("The user has already confirmed this device.");
-      if (user?.isDemo) return "failed";
       const token = (await getValidAccessToken()) || user?.accessToken;
       const mail = buildAssignmentConfirmMail(
         existing,
@@ -1412,7 +1282,7 @@ export function AssetProvider({ children }: { children: React.ReactNode }) {
       );
       return deliverMail(token, mail);
     },
-    [assets, user?.isDemo, user?.accessToken, user?.name, getValidAccessToken]
+    [assets, user?.accessToken, user?.name, getValidAccessToken]
   );
 
   const value = useMemo<AssetContextValue>(
