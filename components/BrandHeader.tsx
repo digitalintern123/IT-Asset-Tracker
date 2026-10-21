@@ -44,7 +44,6 @@ export function BrandHeader({ kicker, title, subtitle, right }: Props) {
               <Text style={styles.brandSub}>Hospitality Operations</Text>
             </View>
           </View>
-          <View style={[styles.dotMark, { backgroundColor: colors.brandGold }]} />
         </View>
 
         <View style={styles.titleRow}>
@@ -103,11 +102,6 @@ const styles = StyleSheet.create({
     color: "rgba(255, 255, 255, 0.65)",
     letterSpacing: 0.5,
     marginTop: 1,
-  },
-  dotMark: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
   },
   titleRow: {
     flexDirection: "row",
