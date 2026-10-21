@@ -13,7 +13,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { HeaderBackButton } from "@/components/HeaderBackButton";
 import { Download, Lock } from "@/components/LucideIcon";
 import { STATUSES, STATUS_COLORS, STATUS_LABELS } from "@/constants/categories";
 import { useAssets } from "@/contexts/AssetContext";
@@ -91,8 +90,6 @@ export default function ReportsScreen() {
   const router = useRouter();
   const headerOptions = {
     title: "Report logs",
-    // After a refresh or a direct link there is no stack to go back to.
-    headerLeft: router.canGoBack() ? undefined : () => <HeaderBackButton />,
   };
 
   const allRows = useMemo(() => flattenEvents(assets), [assets]);

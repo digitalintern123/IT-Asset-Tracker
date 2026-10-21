@@ -2,7 +2,6 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { HeaderBackButton } from "@/components/HeaderBackButton";
 import { AlertTriangle, CheckCircle2, Info } from "@/components/LucideIcon";
 import { useAssets } from "@/contexts/AssetContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -47,7 +46,6 @@ export default function ApproveScreen() {
 
   const headerOptions = {
     title: isEdit ? "Approve edit" : "Approve hand-over",
-    headerLeft: router.canGoBack() ? undefined : () => <HeaderBackButton />,
   };
 
   const decide = async (approved: boolean) => {

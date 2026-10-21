@@ -159,6 +159,13 @@ Plesk → Git shows the latest `IIS build of <sha>` commit.
 
 ## 4. Font patch
 
+> **Library assets.** Expo puts library files (the header icons, the Inter
+> font files) under `assets/node_modules/`. Plesk/IIS with iisnode refuses
+> every URL that contains `node_modules`, so they would not load (missing back
+> arrows, fallback fonts). `scripts/build-iis.js` moves them to
+> `assets/vendor/` and rewrites the bundle; the build fails if any reference is
+> left. The app also draws its own back button (SVG) on every web screen.
+
 The app draws its icons with **Lucide** (`lucide-react-native`, SVG), so the
 current bundle references no icon fonts and the patch is a no-op. It stays as
 a safety net in case `@expo/vector-icons` is used again: those icon fonts are

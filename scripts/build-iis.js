@@ -1,6 +1,7 @@
 /**
  * Prepares web-build/ for the IIS site (run after `expo export`):
- * favicons, icon fonts + font-path patch, and web.config. The result is the
+ * favicons, icon fonts + font-path patch, library assets moved out of
+ * assets/node_modules/, and web.config. The result is the
  * complete site to publish (see .github/workflows/deploy-iis.yml).
  */
 const fs = require("fs");
@@ -61,6 +62,36 @@ if (fs.existsSync(jsDir)) {
   }
 }
 console.log(patched ? `Patched font paths in ${patched} file(s).` : "No vector-icon font paths in bundle; nothing to patch.");
+
+// IIS (Plesk with iisnode) refuses any URL containing "node_modules", and
+// Expo emits library assets under assets/node_modules/: the header back
+// arrow, the Inter font files and other icons would then fail to load.
+// Move them to assets/vendor/ and rewrite every reference.
+const NM = "assets/node_modules/";
+const VENDOR = "assets/vendor/";
+const nmDir = path.join(out, "assets", "node_modules");
+if (fs.existsSync(nmDir)) {
+  fs.cpSync(nmDir, path.join(out, "assets", "vendor"), { recursive: true });
+  fs.rmSync(nmDir, { recursive: true, force: true });
+}
+const allFiles = (dir) =>
+  fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? allFiles(path.join(dir, e.name)) : [path.join(dir, e.name)],
+  );
+let moved = 0;
+for (const file of allFiles(out).filter((f) => /\.(js|html|css|json|map)$/.test(f))) {
+  const c = fs.readFileSync(file, "utf8");
+  if (!c.includes(NM)) continue;
+  fs.writeFileSync(file, c.split(NM).join(VENDOR));
+  moved++;
+}
+for (const file of allFiles(out)) {
+  if (path.relative(out, file).split(path.sep).includes("node_modules")) fail(`file still under node_modules: ${path.relative(out, file)}`);
+}
+for (const file of allFiles(out).filter((f) => /\.(js|html|css)$/.test(f))) {
+  if (fs.readFileSync(file, "utf8").includes(NM)) fail(`unrewritten ${NM} reference in ${path.relative(out, file)}`);
+}
+console.log(`Moved library assets to ${VENDOR} (${moved} file(s) rewritten).`);
 
 // Every inline script must be allowed by the Content-Security-Policy hash
 // list, or browsers would block it and the app would not start.

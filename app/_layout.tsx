@@ -9,11 +9,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Href, Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
+import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { HeaderBackButton } from "@/components/HeaderBackButton";
 import { AssetProvider } from "@/contexts/AssetContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { installGlobalErrorHandlers } from "@/lib/errorLog";
@@ -47,7 +49,15 @@ function RootLayoutNav() {
   return (
     <>
       <AuthGate />
-      <Stack screenOptions={{ headerBackTitle: "Back" }}>
+      {/* Web: the app's own back button on every screen. The stack's
+          default arrow is an image that IIS may not serve (and it is
+          missing after a refresh or an emailed link). */}
+      <Stack
+        screenOptions={{
+          headerBackTitle: "Back",
+          ...(Platform.OS === "web" ? { headerLeft: () => <HeaderBackButton /> } : {}),
+        }}
+      >
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen

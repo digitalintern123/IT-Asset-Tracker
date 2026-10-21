@@ -2,7 +2,6 @@ import { Stack, useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { HeaderBackButton } from "@/components/HeaderBackButton";
 import { Download, FileText, Lock } from "@/components/LucideIcon";
 import { SelectField } from "@/components/SelectField";
 import { CATEGORIES, VERTICALS } from "@/constants/categories";
@@ -65,7 +64,6 @@ export default function ImportScreen() {
 
   const headerOptions = {
     title: "Import from Excel",
-    headerLeft: router.canGoBack() ? undefined : () => <HeaderBackButton />,
   };
 
   if (user?.role !== "admin") {

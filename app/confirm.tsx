@@ -1,8 +1,7 @@
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { HeaderBackButton } from "@/components/HeaderBackButton";
 import { AlertTriangle, CheckCircle2, Info } from "@/components/LucideIcon";
 import { useAssets } from "@/contexts/AssetContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -19,7 +18,6 @@ type Phase = "ready" | "submitting" | "done" | "error";
  */
 export default function ConfirmScreen() {
   const colors = useColors();
-  const router = useRouter();
   const params = useLocalSearchParams<{ asset?: string; custody?: string }>();
   const assetId = String(params.asset || "").trim();
   const custodyId = String(params.custody || "").trim();
@@ -39,7 +37,6 @@ export default function ConfirmScreen() {
 
   const headerOptions = {
     title: "Confirm receipt",
-    headerLeft: router.canGoBack() ? undefined : () => <HeaderBackButton />,
   };
 
   const confirm = async () => {

@@ -19,7 +19,6 @@ import QRCode from "react-native-qrcode-svg";
 import { AssetForm } from "@/components/AssetForm";
 import { LocationPicker } from "@/components/LocationPicker";
 import { PeoplePicker } from "@/components/PeoplePicker";
-import { HeaderBackButton } from "@/components/HeaderBackButton";
 import {
   AlertCircle,
   Check,
@@ -492,8 +491,6 @@ export default function AssetDetailScreen() {
       <Stack.Screen
         options={{
           title: asset.name,
-          // After a refresh or a direct link there is no stack to go back to.
-          headerLeft: router.canGoBack() ? undefined : () => <HeaderBackButton />,
           headerRight: () => (
             <View
               style={{
