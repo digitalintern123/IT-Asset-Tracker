@@ -72,3 +72,15 @@ export function isMsConfigured(): boolean {
     MS_CONFIG.SHAREPOINT_SITE_URL.length > 0
   );
 }
+
+/**
+ * Origin of the Node backend (/api/...). On web it is the site itself. The
+ * Android/iOS app has no page origin: it uses EXPO_PUBLIC_API_URL (e.g. the
+ * Render URL) when set at build time, else "" — the /api call then fails and
+ * the app talks to SharePoint (Microsoft Graph) directly.
+ */
+export function backendOrigin(): string {
+  if (typeof window !== "undefined" && window.location?.origin) return window.location.origin;
+  const configured = typeof process !== "undefined" ? process.env?.EXPO_PUBLIC_API_URL : undefined;
+  return (configured || "").replace(/\/+$/, "");
+}

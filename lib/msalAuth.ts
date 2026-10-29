@@ -8,7 +8,7 @@ import * as AuthSession from "expo-auth-session";
 import * as Crypto from "expo-crypto";
 import { Platform } from "react-native";
 
-import { MS_CONFIG, isMsConfigured } from "./msConfig";
+import { MS_CONFIG, backendOrigin, isMsConfigured } from "./msConfig";
 import { setSecureTokens, getSecureTokens, StoredTokens } from "./secureStorage";
 
 export interface MsTokens {
@@ -180,7 +180,7 @@ export async function exchangeCodeForTokens(
   }
 
   // 2. Fallback to integrated backend proxy
-  const backendBase = typeof window !== "undefined" ? window.location.origin : "";
+  const backendBase = backendOrigin();
   const backendRes = await fetch(`${backendBase}/api/auth/token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -243,7 +243,7 @@ export async function silentRefreshToken(refreshToken: string, scopes?: string[]
   if (scopes) throw new Error("Microsoft did not issue a token for the requested permission.");
 
   // 2. Backend proxy fallback
-  const backendBase = typeof window !== "undefined" ? window.location.origin : "";
+  const backendBase = backendOrigin();
   const backendRes = await fetch(`${backendBase}/api/auth/refresh`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

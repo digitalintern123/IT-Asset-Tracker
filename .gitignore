@@ -7,3 +7,5 @@ npm-debug.*
 .DS_Store
 *.env.local
 test-results/
+.env
+.env.*

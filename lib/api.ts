@@ -5,9 +5,10 @@
 
 import { getSecureTokens } from "./secureStorage";
 import { createSharePointService } from "./sharepoint";
+import { backendOrigin } from "./msConfig";
 import type { Asset, AssetInput } from "@/types/asset";
 
-const API_BASE = typeof window !== "undefined" ? window.location.origin : "";
+const API_BASE = backendOrigin();
 
 function getHeaders(token?: string): Record<string, string> {
   const headers: Record<string, string> = {

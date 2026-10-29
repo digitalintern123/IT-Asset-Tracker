@@ -383,6 +383,46 @@ Setup:
    now, and again after imports or if a hand-over reported an access
    problem (Settings → Diagnostics).
 
+## Android app (.apk)
+
+The same code builds an Android app with Expo's build service (EAS). The
+settings are in `eas.json`:
+- the **preview** profile makes an installable `.apk`
+- the **production** profile makes an `.aab` for the Play Store
+
+**One-time setup**
+1. **Expo account.** Create a free account at https://expo.dev.
+2. **Microsoft sign-in.** Entra → App registrations → IT Asset Tracker → **Authentication** → *Add a platform* → **Mobile and desktop applications**. Add this redirect URI exactly:
+   ```
+   asset-tracker://auth/callback
+   ```
+   Keep the existing Single-page application (web) platform as it is.
+3. **Optional: Render backend.** To use the Render server instead of going straight to SharePoint, set the build variable `EXPO_PUBLIC_API_URL` to the Render URL. Without it, the app calls Microsoft Graph directly, exactly like the IIS site.
+
+**Build the APK** (on any PC with Node 20+)
+```bash
+npm install -g eas-cli
+eas login
+eas build -p android --profile preview
+```
+The first run asks to create the Expo project and an Android signing key
+(let EAS manage it). After about 15 minutes it prints a download link.
+
+**Install it**
+- Open the link on the phone.
+- Allow "Install unknown apps" for the browser.
+- Install it.
+
+For each new version, raise `android.versionCode` in `app.json`.
+
+**Web-only features** (use the web site for these):
+- QR **Print label** and **Share QR**
+- **Import from Excel**
+- Report CSV / backup downloads
+
+Scanning QR codes, assets, hand-overs, approvals and confirmations all work
+in the app.
+
 ## 7. Monitoring, diagnostics and backups
 
 **Uptime.** `.github/workflows/uptime.yml` checks the live site every 15

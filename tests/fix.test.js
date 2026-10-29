@@ -14,6 +14,7 @@ const sp = new Proxy({}, { get: (_, k) => k === "then" ? undefined : async () =>
 const api = loadTs("lib/api.ts", {
   "./secureStorage": { getSecureTokens: async () => ({ idToken: "idt" }) },
   "./sharepoint": { createSharePointService: async () => sp },
+  "./msConfig": { backendOrigin: () => "" },
 });
 const json = (status, body) => async () => ({ ok: status >= 200 && status < 300, status, headers: { get: (h) => (h.toLowerCase() === "content-type" ? "application/json; charset=utf-8" : null) }, json: async () => body });
 const html200 = async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError("Unexpected token <"); } });
