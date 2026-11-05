@@ -46,14 +46,27 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
 export const ROLE_LABELS: Record<UserRole, string> = {
   admin: "IT Administrator",
   technician: "IT Technician",
-  viewer: "Auditor / Viewer",
+  viewer: "Viewer",
 };
 
 export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
   admin: "Full administrative access: create, edit, delete assets & manage system.",
   technician: "Operational staff: register assets, edit assignments & scan QR codes.",
-  viewer: "Read-only access: browse inventory, search specs & scan to inspect.",
+  viewer: "Read-only access to the devices issued to you.",
 };
+
+/** Auditor: a read-only role that sees the whole register. */
+export const AUDITOR_LABEL = "Auditor";
+export const AUDITOR_DESCRIPTION = "Read-only access to every device: browse inventory, search specs & scan to inspect.";
+
+/** Label for the user's role; read-only users are "Auditor" or "Viewer". */
+export function roleLabel(user: { role: UserRole; isAuditor?: boolean }): string {
+  return user.role === "viewer" && user.isAuditor ? AUDITOR_LABEL : ROLE_LABELS[user.role] || ROLE_LABELS.viewer;
+}
+
+export function roleDescription(user: { role: UserRole; isAuditor?: boolean }): string {
+  return user.role === "viewer" && user.isAuditor ? AUDITOR_DESCRIPTION : ROLE_DESCRIPTIONS[user.role] || ROLE_DESCRIPTIONS.viewer;
+}
 
 /**
  * Extract roles claim from a JWT (id_token or access_token).
@@ -93,6 +106,8 @@ export const ROLE_CLAIMS: Record<string, UserRole> = {
   admin: "admin",
   "asset.technician": "technician",
   technician: "technician",
+  "asset.auditor": "viewer",
+  auditor: "viewer",
   "asset.viewer": "viewer",
   viewer: "viewer",
 };
@@ -103,8 +118,11 @@ export const ROLE_CLAIMS: Record<string, UserRole> = {
  * requests. Keep in sync with APPROVER_CLAIMS in server/serve-web.js.
  */
 export const APPROVER_CLAIMS = ["asset.approver", "approver"];
-/** An explicit Auditor / Viewer role sees the whole register (read-only). */
-export const AUDITOR_CLAIMS = ["asset.viewer", "viewer"];
+/**
+ * Auditors (app role Asset.Auditor) see the whole register, read-only.
+ * Viewers (Asset.Viewer) and staff with no role see only their own devices.
+ */
+export const AUDITOR_CLAIMS = ["asset.auditor", "auditor"];
 
 function hasClaim(tokenRoles: string[] = [], claims: string[]): boolean {
   return tokenRoles.some((raw) => claims.includes(String(raw).trim().toLowerCase()));
@@ -113,19 +131,20 @@ function hasClaim(tokenRoles: string[] = [], claims: string[]): boolean {
 export interface RoleFlags {
   /** Member of IT-Asset Approver: decides hand-overs and edit requests. */
   isApprover: boolean;
-  /** Has the Auditor / Viewer app role (or a higher role): sees every device. */
+  /** Has the Auditor app role: read-only, but sees every device. */
+  isAuditor: boolean;
+  /** Auditor, approver or an IT role: sees every device. */
   seesAll: boolean;
 }
 
 /**
- * Flags from the signed token. Staff with no app role only see the devices
- * issued to them.
+ * Flags from the signed token. Viewers and staff with no app role only see
+ * the devices issued to them.
  */
 export function roleFlags(role: UserRole, tokenRoles: string[] = []): RoleFlags {
-  return {
-    isApprover: hasClaim(tokenRoles, APPROVER_CLAIMS),
-    seesAll: role !== "viewer" || hasClaim(tokenRoles, AUDITOR_CLAIMS) || hasClaim(tokenRoles, APPROVER_CLAIMS),
-  };
+  const isApprover = hasClaim(tokenRoles, APPROVER_CLAIMS);
+  const isAuditor = hasClaim(tokenRoles, AUDITOR_CLAIMS);
+  return { isApprover, isAuditor, seesAll: role !== "viewer" || isAuditor || isApprover };
 }
 
 const ROLE_RANK: Record<UserRole, number> = { viewer: 0, technician: 1, admin: 2 };

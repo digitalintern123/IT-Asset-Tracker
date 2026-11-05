@@ -21,7 +21,7 @@ import { ChevronRight, Cloud, Database, FileText, LogOut, LucideIcon, Upload } f
 import { useAssets } from "@/contexts/AssetContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
-import { ROLE_LABELS, ROLE_DESCRIPTIONS } from "@/lib/roles";
+import { roleDescription, roleLabel } from "@/lib/roles";
 import { checkSetup, fixSharePointSetup, MANAGE_SCOPE, SetupReport } from "@/lib/setupCheck";
 
 type LucideIconName = string;
@@ -450,12 +450,12 @@ export default function SettingsScreen() {
             icon="user-check"
             label="Authorization Role"
             sublabel={
-              `${ROLE_DESCRIPTIONS[user.role || "viewer"]}` +
+              `${roleDescription(user)}` +
               (user.roleSource ? `\nFrom: ${user.roleSource}` : "") +
               `\nIT-Asset Approver: ${user.isApprover ? "Yes — you approve hand-overs and edit requests" : "No"}` +
               (user.role === "viewer"
                 ? user.seesAll
-                  ? "\nSees: the whole register (Auditor, read-only)"
+                  ? "\nSees: the whole register (read-only)"
                   : "\nSees: only the devices issued to you"
                 : "") +
               `\nRoles in your Microsoft sign-in: ${user.tokenRoles?.length ? user.tokenRoles.join(", ") : "none"}` +
@@ -489,7 +489,7 @@ export default function SettingsScreen() {
                     },
                   ]}
                 >
-                  {ROLE_LABELS[user.role || "viewer"]}
+                  {roleLabel(user)}
                 </Text>
               </View>
             }

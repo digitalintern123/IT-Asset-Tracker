@@ -6,8 +6,9 @@
   Run once by a tenant admin (Global Admin, or Application Admin + Groups Admin
   + Exchange Admin). Safe to run again: every step checks what already exists.
 
-    1. App roles Asset.Admin / Asset.Technician / Asset.Viewer / Asset.Approver on the app registration
-    2. Security groups "IT Asset Admins", "IT Asset Technicians" and "IT-Asset Approver" (+ optional members)
+    1. App roles Asset.Admin / Asset.Technician / Asset.Auditor / Asset.Viewer / Asset.Approver
+    2. Security groups "IT Asset Admins", "IT Asset Technicians", "IT-Asset Approver" and
+       "IT Asset Auditors" (+ optional members)
     3. Group -> app role assignments; "Assignment required" = No (all staff can sign in)
     4. Delegated Microsoft Graph permissions + SharePoint AllSites.Manage (per-device
        access) + admin consent
@@ -31,8 +32,10 @@ param(
   [string]$AdminGroupName = "IT Asset Admins",
   [string]$TechnicianGroupName = "IT Asset Technicians",
   [string]$ApproverGroupName = "IT-Asset Approver",
+  [string]$AuditorGroupName = "IT Asset Auditors",
   [string[]]$AdminUsers = @(),
   [string[]]$ApproverUsers = @(),
+  [string[]]$AuditorUsers = @(),
   [string[]]$TechnicianUsers = @(),
   [string]$HelpdeskMailbox = "corpit.helpdesk@encalm.com",
   [string]$SharePointHost = "https://encalmit.sharepoint.com",
@@ -50,7 +53,8 @@ $DelegatedScopes = @(
 $Roles = @(
   @{ Value = "Asset.Admin";      DisplayName = "IT Administrator"; Description = "Full access to the IT Asset Tracker" },
   @{ Value = "Asset.Technician"; DisplayName = "IT Technician";    Description = "Create and edit assets" },
-  @{ Value = "Asset.Viewer";     DisplayName = "Auditor / Viewer"; Description = "Read-only access" },
+  @{ Value = "Asset.Auditor";    DisplayName = "Auditor";          Description = "Read-only access to every device" },
+  @{ Value = "Asset.Viewer";     DisplayName = "Viewer (own devices)"; Description = "Read-only access to the devices issued to them" },
   @{ Value = "Asset.Approver";   DisplayName = "IT Asset Approver"; Description = "Approves hand-overs and edit requests" }
 )
 
@@ -121,14 +125,16 @@ function Ensure-Members($group, [string[]]$upns) {
 $adminGroup = Ensure-Group $AdminGroupName
 $techGroup = Ensure-Group $TechnicianGroupName
 $approverGroup = Ensure-Group $ApproverGroupName
+$auditorGroup = Ensure-Group $AuditorGroupName
 Ensure-Members $adminGroup $AdminUsers
 Ensure-Members $techGroup $TechnicianUsers
 Ensure-Members $approverGroup $ApproverUsers
+Ensure-Members $auditorGroup $AuditorUsers
 
 # --- 3. Role assignments + sign-in for everyone -----------------------------
 Step "App role assignments"
 $assigned = @(Get-MgServicePrincipalAppRoleAssignedTo -ServicePrincipalId $sp.Id -All)
-foreach ($pair in @(@($adminGroup, "Asset.Admin"), @($techGroup, "Asset.Technician"), @($approverGroup, "Asset.Approver"))) {
+foreach ($pair in @(@($adminGroup, "Asset.Admin"), @($techGroup, "Asset.Technician"), @($approverGroup, "Asset.Approver"), @($auditorGroup, "Asset.Auditor"))) {
   $group = $pair[0]; $roleId = RoleId $pair[1]
   if (-not $group -or -not $roleId) { continue }
   if ($assigned | Where-Object { $_.PrincipalId -eq $group.Id -and $_.AppRoleId -eq $roleId }) {

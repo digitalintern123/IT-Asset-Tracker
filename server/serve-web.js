@@ -30,6 +30,8 @@ const ROLE_CLAIMS = {
   admin: "admin",
   "asset.technician": "technician",
   technician: "technician",
+  "asset.auditor": "viewer",
+  auditor: "viewer",
   "asset.viewer": "viewer",
   viewer: "viewer",
 };

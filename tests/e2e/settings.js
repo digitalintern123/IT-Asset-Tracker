@@ -40,7 +40,7 @@ const check = (n, c, x = "") => console.log(`${c ? "PASS" : "FAIL"} ${n} ${x}`);
   await seedSession(page, { email: "someone@encalm.com", name: "Some One", initials: "SO", role: "admin" }, { scp: "Sites.ReadWrite.All User.ReadBasic.All Mail.Send User.Read" });
   await page.goto("http://localhost:10000/settings", { waitUntil: "networkidle" }); await page.waitForTimeout(2000);
   t = await page.locator("body").innerText();
-  check("tampered 'admin' profile -> shown as Auditor / Viewer", t.includes("Auditor / Viewer") && !t.includes("IT Administrator"), (t.match(/Auditor \/ Viewer|IT Administrator|IT Technician/) || [""])[0]);
+  check("tampered 'admin' profile -> shown as Viewer (own devices)", t.includes("Viewer") && t.includes("Sees: only the devices issued to you") && !t.includes("IT Administrator"), (t.match(/Auditor|Viewer|IT Administrator|IT Technician/) || [""])[0]);
   check("role source: Default — no app role", t.includes("From: Default — no app role assigned"));
   check("no roles in token shown as none", t.includes("Roles in your Microsoft sign-in: none"));
   check("Import + Report logs hidden for viewer", !t.includes("Import from Excel") && !t.includes("Report logs"));

@@ -8,7 +8,7 @@ const BASE = "http://localhost:10000";
 const USERS = {
   admin: { email: "it.head@encalm.com", name: "IT Head", initials: "IH", roles: ["Asset.Admin", "Asset.Approver"] },
   technician: { email: "tech.one@encalm.com", name: "Tech One", initials: "TO", roles: ["Asset.Technician"] },
-  viewer: { email: "auditor@encalm.com", name: "Auditor", initials: "AU", roles: ["Asset.Viewer"] },
+  viewer: { email: "auditor@encalm.com", name: "Auditor", initials: "AU", roles: ["Asset.Auditor"] },
 };
 
 const SAMPLE_ASSETS = [

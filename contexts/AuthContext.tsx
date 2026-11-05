@@ -77,7 +77,9 @@ export interface AuthUser {
   tokenRoles?: string[];
   /** Member of IT-Asset Approver (app role Asset.Approver). */
   isApprover?: boolean;
-  /** Sees the whole register; staff without an app role see only their own devices. */
+  /** Auditor app role: read-only, sees every device. */
+  isAuditor?: boolean;
+  /** Sees the whole register; viewers and staff without a role see only their own devices. */
   seesAll?: boolean;
 }
 

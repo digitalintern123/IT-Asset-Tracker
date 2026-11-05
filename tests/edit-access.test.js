@@ -21,7 +21,10 @@ ok("Asset.Approver -> approver, sees all", flags(["Asset.Approver"]).isApprover 
 ok("approver flag is case-insensitive, exact", flags(["APPROVER"]).isApprover && !flags(["NotApprover"]).isApprover);
 ok("approver does not raise the rank", R.resolveUserRole("x@encalm.com", ["Asset.Approver"]) === "viewer");
 ok("admin is not an approver by itself", !flags(["Asset.Admin"]).isApprover && flags(["Asset.Admin"]).seesAll);
-ok("Asset.Viewer (auditor) sees all", flags(["Asset.Viewer"]).seesAll && !flags(["Asset.Viewer"]).isApprover);
+ok("Asset.Auditor sees all, read-only role", flags(["Asset.Auditor"]).seesAll && flags(["Asset.Auditor"]).isAuditor && !flags(["Asset.Auditor"]).isApprover && R.resolveUserRole("x@encalm.com", ["Asset.Auditor"]) === "viewer");
+ok("Asset.Viewer sees only own devices", !flags(["Asset.Viewer"]).seesAll && !flags(["Asset.Viewer"]).isAuditor);
+ok("short value 'Auditor' accepted, exact match only", flags(["auditor"]).isAuditor && !flags(["SystemAuditor"]).isAuditor);
+ok("labels: Auditor vs Viewer", R.roleLabel({ role: "viewer", isAuditor: true }) === "Auditor" && R.roleLabel({ role: "viewer" }) === "Viewer" && R.roleLabel({ role: "admin", isAuditor: true }) === "IT Administrator");
 ok("technician sees all", flags(["Asset.Technician"]).seesAll);
 ok("staff (no role) sees only own", !flags([]).seesAll && !flags([]).isApprover);
 ok("admin + approver claims: both flags", flags(["Asset.Admin", "Asset.Approver"]).isApprover && flags(["Asset.Admin", "Asset.Approver"]).seesAll);

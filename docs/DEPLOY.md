@@ -234,27 +234,31 @@ Native (Android) builds use `asset-tracker://auth/callback`
 
 **App roles — who can do what.** Roles come only from Entra ID app roles in
 the signed id_token (re-read at every sign-in and token refresh — never from
-the browser's storage). Anyone without a role is a read-only **Viewer**, so
-all staff can still sign in to confirm receipt of a device.
+the browser's storage). Anyone without a role is a read-only **Viewer** who
+sees only their own devices, so all staff can still sign in to confirm receipt.
 
 | App role value | App role | Can |
 |---|---|---|
 | `Asset.Admin` | IT Administrator | everything: create, edit, delete, approve reassignments, import, report logs |
 | `Asset.Technician` | IT Technician | create and edit assets; reassigning an In Use device needs Admin approval; no delete |
-| `Asset.Viewer` (or no role) | Auditor / Viewer | read only |
+| `Asset.Auditor` | Auditor | read only — **every** device |
+| `Asset.Viewer` (or no role) | Viewer | read only — **only the devices issued to them** |
+| `Asset.Approver` (extra) | IT Asset Approver | approves hand-overs and edit requests (on top of the role above) |
 
-The short values `Admin`, `Technician` and `Viewer` are also accepted. Matching
+The short values `Admin`, `Technician`, `Auditor` and `Viewer` are also accepted. Matching
 is exact (case-insensitive) and the highest role wins. `ADMIN_EMAILS`
 (`lib/msConfig.ts` and the server env var) is only an emergency fallback.
 
-1. **App registrations → IT Asset Tracker → App roles → Create app role**, three
-   times (Allowed member types: *Users/Groups*):
+1. **App registrations → IT Asset Tracker → App roles → Create app role**
+   for each (Allowed member types: *Users/Groups*):
 
    | Display name | Value | Description |
    |---|---|---|
    | IT Administrator | `Asset.Admin` | Full access to the IT Asset Tracker |
    | IT Technician | `Asset.Technician` | Create and edit assets |
-   | Auditor / Viewer | `Asset.Viewer` | Read-only access |
+   | Auditor | `Asset.Auditor` | Read-only access to every device |
+   | Viewer (own devices) | `Asset.Viewer` | Read-only access to their own devices |
+   | IT Asset Approver | `Asset.Approver` | Approves hand-overs and edit requests |
 
 2. Create two security groups, e.g. **IT Asset Admins** and **IT Asset
    Technicians**, and add the IT staff.
@@ -278,7 +282,7 @@ Stop inheriting permissions):
 |---|---|---|
 | IT Asset Admins | Edit | Full Control |
 | IT Asset Technicians | *Contribute without Delete* (Site settings → Site permissions → Permission levels → copy *Contribute*, untick *Delete Items*) | Contribute |
-| Auditors (optional) | Read | Read |
+| IT Asset Auditors (`Asset.Auditor`) | Read | Read |
 | Everyone else | no access | Contribute (see *Assignment confirmations* below) |
 
 **Check the setup:** Settings → *Test SharePoint Connection* checks the site,
@@ -362,8 +366,8 @@ Exports and backups stay admin-only.
 
 | Who | Sees |
 |---|---|
-| Staff with no app role | Only the devices issued to them (open custody record) |
-| Auditor / Viewer (`Asset.Viewer`) | Every device, read-only |
+| Viewer (`Asset.Viewer`) or no app role | Only the devices issued to them (open custody record) |
+| Auditor (`Asset.Auditor`) | Every device, read-only |
 | Technician, Approver, Admin | Every device |
 
 SharePoint enforces it too: each handed-over device gets its own permissions,
