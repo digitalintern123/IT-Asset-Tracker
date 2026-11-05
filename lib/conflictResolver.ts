@@ -38,6 +38,8 @@ export function resolveAssetConflict(
     "operationalStatus",
     "assetClass",
     "accessories",
+    "poNumber",
+    "invoiceNumber",
     "purchaseDate",
     "purchasePrice",
     "warrantyExpiry",

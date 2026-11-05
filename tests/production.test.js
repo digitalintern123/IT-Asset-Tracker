@@ -87,9 +87,9 @@ function mockGraph(state) {
   let posts = mockGraph(state);
   let res = await SC.fixSharePointSetup("tok");
   const colPosts = posts.filter((p) => p.url.includes("/lists/reg/columns"));
-  ok("creates only the missing register columns", colPosts.length === 8 && !colPosts.some((p) => p.body.name === "Make") && colPosts.every((p) => p.body.text), colPosts.map((p) => p.body.name).join(","));
+  ok("creates only the missing register columns", colPosts.length === 10 && !colPosts.some((p) => p.body.name === "Make") && colPosts.every((p) => p.body.text), colPosts.map((p) => p.body.name).join(","));
   ok("creates the Asset Confirmations list with its columns", posts.some((p) => p.url.endsWith("/lists") && p.body.displayName === "Asset Confirmations" && p.body.columns.map((c) => c.name).join() === "CustodyId,AssetName,ConfirmedAt" && p.body.list.template === "genericList"));
-  ok("reports what it created", res.created.length === 9 && res.failed.length === 0, JSON.stringify(res));
+  ok("reports what it created", res.created.length === 11 && res.failed.length === 0, JSON.stringify(res));
   posts = mockGraph(state);
   res = await SC.fixSharePointSetup("tok");
   ok("second run changes nothing (idempotent)", posts.length === 0 && res.created.length === 0, JSON.stringify(posts.map((p) => p.url)));

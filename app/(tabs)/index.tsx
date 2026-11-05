@@ -58,6 +58,8 @@ export default function AssetsScreen() {
         (a.make || "").toLowerCase().includes(q) ||
         (a.department || "").toLowerCase().includes(q) ||
         (a.model || "").toLowerCase().includes(q) ||
+        (a.poNumber || "").toLowerCase().includes(q) ||
+        (a.invoiceNumber || "").toLowerCase().includes(q) ||
         a.category.toLowerCase().includes(q)
       );
     });
@@ -136,7 +138,7 @@ export default function AssetsScreen() {
             <TextInput
               value={query}
               onChangeText={setQuery}
-              placeholder="Search by name, serial, assignee…"
+              placeholder="Search by name, serial, user, PO / invoice…"
               placeholderTextColor={colors.mutedForeground}
               style={[styles.searchInput, { color: colors.foreground }]}
               autoCapitalize="none"

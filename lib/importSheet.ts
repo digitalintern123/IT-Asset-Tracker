@@ -36,6 +36,8 @@ export type ImportField =
   | "operationalStatus"
   | "assetClass"
   | "accessories"
+  | "poNumber"
+  | "invoiceNumber"
   | "vertical";
 
 /** Header text (normalised) → field. Several spellings are accepted. */
@@ -56,6 +58,8 @@ const HEADER_ALIASES: Record<ImportField, string[]> = {
   operationalStatus: ["status (operational/non operational)", "operational status", "status"],
   assetClass: ["asset cateogarisation (hardware/software/service/)", "asset categorisation (hardware/software/service)", "asset categorisation", "asset categorization", "asset cateogarisation", "asset class"],
   accessories: ["accessories"],
+  poNumber: ["po number", "po no", "po", "purchase order", "purchase order number", "purchase order no"],
+  invoiceNumber: ["invoice number", "invoice no", "invoice", "bill number", "bill no"],
   vertical: ["vertical", "company"],
 };
 
@@ -251,6 +255,8 @@ export function parseInventorySheet(
       operationalStatus: operational || "Operational",
       assetClass: assetClass || "Hardware",
       accessories: get("accessories"),
+      poNumber: get("poNumber") || undefined,
+      invoiceNumber: get("invoiceNumber") || undefined,
       purchaseDate: "",
       purchasePrice: 0,
       warrantyExpiry: null,
@@ -290,6 +296,8 @@ export function inventoryTemplateCsv(): string {
     "Asset Categorisation (Hardware/Software/Service)",
     "Accessories",
     "Vertical",
+    "PO Number",
+    "Invoice Number",
   ];
   const quote = (h: string) => (/[",]/.test(h) ? `"${h.replace(/"/g, '""')}"` : h);
   return "﻿" + headers.map(quote).join(",") + "\r\n";

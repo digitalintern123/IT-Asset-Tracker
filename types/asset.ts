@@ -113,6 +113,9 @@ export interface Asset {
   /** Hardware / Software / Service. */
   assetClass?: string;
   accessories?: string;
+  /** Purchase order and invoice references (free text). */
+  poNumber?: string;
+  invoiceNumber?: string;
   purchaseDate: string;
   purchasePrice: number;
   warrantyExpiry: string | null;

@@ -131,6 +131,10 @@ export function fromSpItem(item: any): Asset {
     operationalStatus: String(f.OperationalStatus || ""),
     assetClass: String(f.AssetClass || ""),
     accessories: String(f.Accessories || ""),
+    // Left undefined when empty, so saves don't send these columns until
+    // they hold a value (lists created before they existed keep working).
+    poNumber: f.PONumber ? String(f.PONumber) : undefined,
+    invoiceNumber: f.InvoiceNumber ? String(f.InvoiceNumber) : undefined,
     purchaseDate: toDateOnly(f.PurchaseDate),
     purchasePrice: Number(f.PurchasePrice) || 0,
     warrantyExpiry: toDateOnly(f.WarrantyExpiry) || null,
@@ -160,6 +164,8 @@ export const OPTIONAL_COLUMNS = [
   "OperationalStatus",
   "AssetClass",
   "Accessories",
+  "PONumber",
+  "InvoiceNumber",
 ];
 
 /** Graph rejects writes to a column the list doesn't have; say which one. */
@@ -193,6 +199,8 @@ const OPTIONAL_FIELDS: [string, string][] = [
   ["operationalStatus", "OperationalStatus"],
   ["assetClass", "AssetClass"],
   ["accessories", "Accessories"],
+  ["poNumber", "PONumber"],
+  ["invoiceNumber", "InvoiceNumber"],
 ];
 
 /**

@@ -94,6 +94,8 @@ export function AssetForm({
   );
   const [assetClass, setAssetClass] = useState<string>(initial?.assetClass ?? (initial ? "" : "Hardware"));
   const [accessories, setAccessories] = useState(initial?.accessories ?? "");
+  const [poNumber, setPoNumber] = useState(initial?.poNumber ?? "");
+  const [invoiceNumber, setInvoiceNumber] = useState(initial?.invoiceNumber ?? "");
   const [vertical, setVertical] = useState<string>(
     (VERTICALS as readonly string[]).includes(initial?.vertical ?? "") ? initial!.vertical! : "",
   );
@@ -238,6 +240,9 @@ export function AssetForm({
         operationalStatus,
         assetClass,
         accessories: accessories.trim(),
+        // Sent only when set, or when an existing value is cleared.
+        poNumber: poNumber.trim() || (initial?.poNumber ? "" : undefined),
+        invoiceNumber: invoiceNumber.trim() || (initial?.invoiceNumber ? "" : undefined),
         purchaseDate: purchaseDate.trim(),
         purchasePrice: price,
         warrantyExpiry: warrantyExpiry.trim() || null,
@@ -619,6 +624,26 @@ export function AssetForm({
       </Section>
 
       <Section label="Purchase" colors={colors}>
+        <Field label="PO number" colors={colors}>
+          <TextInput
+            value={poNumber}
+            onChangeText={setPoNumber}
+            placeholder="e.g. PO/2026/0142"
+            placeholderTextColor={colors.mutedForeground}
+            style={inputStyle}
+            autoCapitalize="characters"
+          />
+        </Field>
+        <Field label="Invoice number" colors={colors}>
+          <TextInput
+            value={invoiceNumber}
+            onChangeText={setInvoiceNumber}
+            placeholder="e.g. INV-88231"
+            placeholderTextColor={colors.mutedForeground}
+            style={inputStyle}
+            autoCapitalize="characters"
+          />
+        </Field>
         <Field label="Purchase date (YYYY-MM-DD)" colors={colors}>
           <TextInput
             value={purchaseDate}

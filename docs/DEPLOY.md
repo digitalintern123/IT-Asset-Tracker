@@ -505,6 +505,14 @@ required in SharePoint — the app enforces the required ones on the form):
 
 A missing column gives a clear "missing the '<name>' column" error on save.
 
+### Optional columns: `PONumber` and `InvoiceNumber`
+
+Purchase order and invoice references (Single line of text). Settings → Test
+SharePoint Connection → **Fix automatically** adds both. Until they exist,
+devices can still be saved; only entering a PO or invoice number asks for the
+column. The Excel import reads "PO Number" / "PO No" / "Purchase Order" and
+"Invoice Number" / "Invoice No" / "Bill No" headers.
+
 ### Required columns: `Make` and `Model`
 
 Add two **Single line of text** columns named exactly `Make` and `Model`

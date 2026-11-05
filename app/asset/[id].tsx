@@ -736,6 +736,8 @@ export default function AssetDetailScreen() {
       </DetailGroup>
 
       <DetailGroup title="Purchase" colors={colors}>
+        <DetailRow label="PO number" value={asset.poNumber || "—"} colors={colors} />
+        <DetailRow label="Invoice number" value={asset.invoiceNumber || "—"} colors={colors} />
         <DetailRow label="Purchase date" value={formatDate(asset.purchaseDate)} colors={colors} />
         <DetailRow
           label="Purchase price"

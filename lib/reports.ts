@@ -98,6 +98,8 @@ export interface ReportRow {
   department: string;
   criticality: string;
   operationalStatus: string;
+  poNumber: string;
+  invoiceNumber: string;
   type: AssetEventType;
   event: string;
   user: string;
@@ -131,6 +133,8 @@ export function flattenEvents(assets: Asset[]): ReportRow[] {
         department: asset.department || "",
         criticality: asset.criticality || "",
         operationalStatus: asset.operationalStatus || "",
+        poNumber: asset.poNumber || "",
+        invoiceNumber: asset.invoiceNumber || "",
         type: evt.type,
         event: EVENT_LABELS[evt.type] ?? evt.type,
         user: evt.assignee || "",
@@ -169,7 +173,7 @@ export function filterRows(rows: ReportRow[], f: ReportFilter): ReportRow[] {
     if (f.from && day < f.from) return false;
     if (f.to && day > f.to) return false;
     if (q) {
-      const hay = `${r.assetId} ${r.device} ${r.make} ${r.model} ${r.location} ${r.vertical} ${r.department} ${r.user} ${r.by} ${r.approvedBy} ${r.notes}`.toLowerCase();
+      const hay = `${r.assetId} ${r.device} ${r.make} ${r.model} ${r.location} ${r.vertical} ${r.department} ${r.poNumber} ${r.invoiceNumber} ${r.user} ${r.by} ${r.approvedBy} ${r.notes}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -254,6 +258,8 @@ export function registerCsv(assets: Asset[]): string {
     "Asset Categorisation (Hardware/Software/Service)",
     "Accessories",
     "Vertical",
+    "PO Number",
+    "Invoice Number",
     "Asset ID",
     "Category",
     "Status",
@@ -285,6 +291,8 @@ export function registerCsv(assets: Asset[]): string {
         a.assetClass,
         a.accessories,
         a.vertical,
+        a.poNumber,
+        a.invoiceNumber,
         a.id,
         a.category,
         STATUS_LABELS[a.status] ?? a.status,

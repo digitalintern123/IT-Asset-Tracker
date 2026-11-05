@@ -51,7 +51,7 @@ ok("missing Mail.Send.Shared flagged with fix", noShared.some((i) => !i.ok && i.
 ok("Sites.Selected counts for SharePoint", S.scopeItems(jwt({ scp: "Sites.Selected User.ReadBasic.All Mail.Send Mail.Send.Shared" })).every((i) => i.ok));
 ok("opaque token -> unknown, not failed", S.scopeItems("opaque").every((i) => i.unknown && i.ok));
 // checkSetup with mocked Graph
-const CORE = [...S.CORE_COLUMNS, "Vertical", "Make", "Model", "Department", "Custodianship", "Criticality", "OperationalStatus", "AssetClass", "Accessories"];
+const CORE = [...S.CORE_COLUMNS, "Vertical", "Make", "Model", "Department", "Custodianship", "Criticality", "OperationalStatus", "AssetClass", "Accessories", "PONumber", "InvoiceNumber"];
 function mockGraph({ cols = CORE, confExists = true, confCols = S.CONFIRMATION_COLUMNS } = {}) {
   global.fetch = async (url) => {
     const u = decodeURIComponent(url); const j = (status, body) => ({ ok: status < 300, status, json: async () => body, text: async () => JSON.stringify(body) });
